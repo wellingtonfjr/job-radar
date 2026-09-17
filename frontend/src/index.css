@@ -1,0 +1,62 @@
+:root {
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-border: #e1e4e9;
+  --color-text: #1a1d23;
+  --color-text-muted: #63697a;
+  --color-primary: #3454d1;
+  --color-primary-dark: #263c9c;
+  --color-remote: #1a8a5f;
+  --color-remote-bg: #e4f6ee;
+  --color-new: #c2410c;
+  --color-new-bg: #ffedd5;
+  --color-source-bg: #eef0f6;
+  --color-error: #b3261e;
+  --color-error-bg: #fdecea;
+
+  font-family: system-ui, -apple-system, 'Segoe UI', Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+  color: var(--color-text);
+  background-color: var(--color-bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-primary-dark);
+  text-decoration: underline;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font-family: inherit;
+}
