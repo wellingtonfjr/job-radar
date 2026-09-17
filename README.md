@@ -1,8 +1,13 @@
 # job-radar
 
 Aggregates open job postings from public/free job-board APIs (Greenhouse, Lever,
-RemoteOK, Remotive, Arbeitnow) into one filterable local dashboard, so you don't
-depend on paid job-aggregator products.
+Remotive, Arbeitnow) into one filterable local dashboard, so you don't depend on
+paid job-aggregator products.
+
+RemoteOK was deliberately left out: its API only ever returns links back to its
+own site, which obfuscates the real employer application link behind encoded
+JavaScript (their monetization model) instead of linking directly and freely to
+the employer, like every other source here does.
 
 ## Structure
 
@@ -16,7 +21,7 @@ depend on paid job-aggregator products.
 ```ts
 interface Job {
   id: string;            // internal id (source + externalId hash)
-  source: string;        // e.g. "greenhouse", "lever", "remoteok"
+  source: string;        // e.g. "greenhouse", "lever", "remotive", "arbeitnow"
   externalId: string;    // id as given by the source
   title: string;
   company: string;

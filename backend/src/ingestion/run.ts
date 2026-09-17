@@ -2,7 +2,6 @@ import { openDb } from "../db/index.js";
 import { runIngestion } from "./pipeline.js";
 import { greenhouseAdapter } from "../adapters/greenhouse.js";
 import { leverAdapter } from "../adapters/lever.js";
-import { remoteOkAdapter } from "../adapters/remoteok.js";
 import { remotiveAdapter } from "../adapters/remotive.js";
 import { arbeitnowAdapter } from "../adapters/arbeitnow.js";
 
@@ -10,7 +9,7 @@ import { arbeitnowAdapter } from "../adapters/arbeitnow.js";
 // no in-process scheduler here.
 async function main(): Promise<void> {
   const db = openDb();
-  const adapters = [greenhouseAdapter, leverAdapter, remoteOkAdapter, remotiveAdapter, arbeitnowAdapter];
+  const adapters = [greenhouseAdapter, leverAdapter, remotiveAdapter, arbeitnowAdapter];
 
   console.log(`[ingest] starting ingestion from ${adapters.length} sources...`);
   const summary = await runIngestion(db, adapters);

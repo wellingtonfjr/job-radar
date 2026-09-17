@@ -29,10 +29,4 @@ export interface JobFilters {
   baseCountries: string[];
 }
 
-export const KNOWN_SOURCES = [
-  'greenhouse',
-  'lever',
-  'remoteok',
-  'remotive',
-  'arbeitnow',
-] as const;
+export const KNOWN_SOURCES = ['greenhouse', 'lever', 'remotive', 'arbeitnow'] as const;

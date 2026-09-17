@@ -87,7 +87,7 @@ function App() {
       <header className="app-header">
         <h1>job-radar</h1>
         <p className="app-subtitle">
-          Open roles aggregated from Greenhouse, Lever, RemoteOK, Remotive and Arbeitnow.
+          Open roles aggregated from Greenhouse, Lever, Remotive and Arbeitnow.
         </p>
       </header>
 
