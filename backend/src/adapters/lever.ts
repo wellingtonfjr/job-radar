@@ -17,6 +17,13 @@ const COMPANY_SLUGS: Record<string, string> = {
   lever: "Lever",
   wealthsimple: "Wealthsimple",
   gopuff: "Gopuff",
+  // EU-headquartered companies, added to surface more roles actually open
+  // to EU/Portugal-based candidates.
+  contentsquare: "Contentsquare",
+  qonto: "Qonto",
+  swile: "Swile",
+  aircall: "Aircall",
+  malt: "Malt",
 };
 
 interface LeverCategories {

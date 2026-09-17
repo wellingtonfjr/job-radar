@@ -15,7 +15,33 @@ import { parseAllowedCountries } from "../lib/locationRestriction.js";
  * or can be found in the network request their careers page makes to
  * boards-api.greenhouse.io) and append the token below.
  */
-const BOARD_TOKENS = ["stripe", "airbnb", "coinbase", "cloudflare"];
+const BOARD_TOKENS = [
+  "stripe",
+  "airbnb",
+  "coinbase",
+  "cloudflare",
+  // EU-headquartered / globally remote-first companies, added to surface
+  // more roles actually open to EU/Portugal-based candidates - the US
+  // majors above mostly restrict remote postings to the US.
+  "gitlab",
+  "elastic",
+  "mozilla",
+  "wikimedia",
+  "canonical",
+  "contentful",
+  "wise",
+  "adyen",
+  "typeform",
+  "algolia",
+  "pandadoc",
+  "n26",
+  "wolt",
+  "gocardless",
+  "truelayer",
+  "dashlane",
+  "tines",
+  "ghost",
+];
 
 interface GreenhouseLocation {
   name?: string | null;
