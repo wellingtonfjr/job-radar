@@ -22,6 +22,7 @@ interface Job {
   company: string;
   location: string | null;
   remote: boolean;
+  allowedCountries: string[] | null; // ISO 3166-1 alpha-2 codes; null = no restriction detected
   url: string;           // link to the original posting
   description: string | null;
   tags: string[];
@@ -54,6 +55,15 @@ Query params (all optional):
 - `remoteOnly=true` — only remote jobs
 - `source` — filter to one source
 - `postedAfter` — ISO date, only jobs posted on/after this date
+- `baseCountries` — comma-separated ISO 3166-1 alpha-2 codes (e.g. `PT,BR`). Forces
+  `remote=1` and matches jobs whose `allowedCountries` is either `null` (no stated
+  restriction) or overlaps any of the given codes. Union semantics across codes:
+  a job restricted to `["PT"]` matches `baseCountries=PT,BR`.
+
+Location-restriction parsing (`backend/src/lib/locationRestriction.ts`) is
+best-effort free-text matching against a curated list of country/region names —
+it will not catch every phrasing, and defaults to "unrestricted" when nothing
+is recognized (a bias toward inclusion, not exclusion).
 
 Response shape:
 ```json

@@ -1,5 +1,6 @@
 import type { JobSourceAdapter } from "./types.js";
 import type { NewJob } from "../types/job.js";
+import { parseAllowedCountries } from "../lib/locationRestriction.js";
 
 /**
  * Lever's public Postings API is per-company:
@@ -55,6 +56,7 @@ async function fetchCompany(slug: string, displayName: string): Promise<NewJob[]
       company: displayName,
       location,
       remote,
+      allowedCountries: parseAllowedCountries(location),
       url: p.hostedUrl ?? p.applyUrl ?? "",
       description: p.descriptionPlain ?? null,
       tags,

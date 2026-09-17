@@ -1,6 +1,7 @@
 import type { JobSourceAdapter } from "./types.js";
 import type { NewJob } from "../types/job.js";
 import { stripHtml } from "./html.js";
+import { parseAllowedCountries } from "../lib/locationRestriction.js";
 
 /** https://remotive.com/api/remote-jobs — public, no API key. */
 interface RemotiveJob {
@@ -38,6 +39,7 @@ export const remotiveAdapter: JobSourceAdapter = {
           company: j.company_name,
           location: j.candidate_required_location ?? null,
           remote: true, // Remotive exclusively lists remote jobs
+          allowedCountries: parseAllowedCountries(j.candidate_required_location),
           url: j.url,
           description: stripHtml(j.description),
           tags,

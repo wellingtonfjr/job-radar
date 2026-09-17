@@ -1,6 +1,7 @@
 import type { JobSourceAdapter } from "./types.js";
 import type { NewJob } from "../types/job.js";
 import { stripHtml } from "./html.js";
+import { parseAllowedCountries } from "../lib/locationRestriction.js";
 
 /**
  * https://www.arbeitnow.com/api/job-board-api — public, no API key.
@@ -52,6 +53,7 @@ export const arbeitnowAdapter: JobSourceAdapter = {
             company: j.company_name,
             location: j.location && j.location.trim() !== "" ? j.location : null,
             remote: Boolean(j.remote),
+            allowedCountries: parseAllowedCountries(j.location),
             url: j.url,
             description: stripHtml(j.description),
             tags: [...(j.tags ?? []), ...(j.job_types ?? [])],

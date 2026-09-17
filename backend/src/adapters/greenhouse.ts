@@ -1,6 +1,7 @@
 import type { JobSourceAdapter } from "./types.js";
 import type { NewJob } from "../types/job.js";
 import { stripHtml } from "./html.js";
+import { parseAllowedCountries } from "../lib/locationRestriction.js";
 
 /**
  * Greenhouse's public Job Board API is per-company:
@@ -59,6 +60,7 @@ async function fetchBoard(boardToken: string): Promise<NewJob[]> {
       company: job.company_name ?? boardToken,
       location: locationName,
       remote: /remote/i.test(locationName ?? ""),
+      allowedCountries: parseAllowedCountries(locationName),
       url: job.absolute_url,
       description: stripHtml(job.content),
       tags,

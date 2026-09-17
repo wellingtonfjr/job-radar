@@ -19,6 +19,23 @@ const querySchema = z.object({
       message: "postedAfter must be a valid ISO date string",
     })
     .optional(),
+  baseCountries: z
+    .string()
+    .trim()
+    .min(1)
+    .optional()
+    .transform((v) =>
+      v
+        ? Array.from(
+            new Set(
+              v
+                .split(",")
+                .map((c) => c.trim().toUpperCase())
+                .filter(Boolean)
+            )
+          )
+        : undefined
+    ),
 });
 
 interface JobRow {
@@ -29,6 +46,7 @@ interface JobRow {
   company: string;
   location: string | null;
   remote: number;
+  allowed_countries: string | null;
   url: string;
   description: string | null;
   tags: string;
@@ -51,6 +69,7 @@ function rowToJob(row: JobRow): Job {
     company: row.company,
     location: row.location,
     remote: Boolean(row.remote),
+    allowedCountries: row.allowed_countries ? (JSON.parse(row.allowed_countries) as string[]) : null,
     url: row.url,
     description: row.description,
     tags,
@@ -76,7 +95,7 @@ export function createJobsRouter(db: Database.Database): Router {
       });
       return;
     }
-    const { keyword, location, remoteOnly, source, postedAfter } = parsed.data;
+    const { keyword, location, remoteOnly, source, postedAfter, baseCountries } = parsed.data;
 
     const conditions: string[] = [];
     const params: Record<string, unknown> = {};
@@ -93,6 +112,19 @@ export function createJobsRouter(db: Database.Database): Router {
     }
     if (remoteOnly) {
       conditions.push("remote = 1");
+    }
+    if (baseCountries && baseCountries.length > 0) {
+      // Country-restriction only makes sense for remote postings.
+      if (!remoteOnly) {
+        conditions.push("remote = 1");
+      }
+      const placeholders = baseCountries.map((_, i) => `@bc${i}`).join(", ");
+      conditions.push(
+        `(allowed_countries IS NULL OR EXISTS (SELECT 1 FROM json_each(allowed_countries) je WHERE je.value IN (${placeholders})))`
+      );
+      baseCountries.forEach((c, i) => {
+        params[`bc${i}`] = c;
+      });
     }
     if (source) {
       conditions.push("source = @source");

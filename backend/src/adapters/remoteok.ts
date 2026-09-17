@@ -1,5 +1,6 @@
 import type { JobSourceAdapter } from "./types.js";
 import type { NewJob } from "../types/job.js";
+import { parseAllowedCountries } from "../lib/locationRestriction.js";
 
 /**
  * https://remoteok.com/api — public, no API key.
@@ -47,6 +48,7 @@ export const remoteOkAdapter: JobSourceAdapter = {
             company: j.company ?? "Unknown",
             location: j.location && j.location.trim() !== "" ? j.location : null,
             remote: true, // RemoteOK exclusively lists remote jobs
+            allowedCountries: parseAllowedCountries(j.location),
             url: j.url ?? j.apply_url ?? `https://remoteok.com/remote-jobs/${j.slug ?? j.id}`,
             description: j.description ?? null,
             tags: j.tags ?? [],

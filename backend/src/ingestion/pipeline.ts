@@ -13,17 +13,18 @@ export interface IngestionSummary {
 // so a re-ingested job keeps the timestamp from when it was first seen.
 const UPSERT_SQL = `
   INSERT INTO jobs (
-    id, source, external_id, title, company, location, remote, url,
-    description, tags, posted_at, first_seen_at
+    id, source, external_id, title, company, location, remote,
+    allowed_countries, url, description, tags, posted_at, first_seen_at
   ) VALUES (
-    @id, @source, @externalId, @title, @company, @location, @remote, @url,
-    @description, @tags, @postedAt, datetime('now')
+    @id, @source, @externalId, @title, @company, @location, @remote,
+    @allowedCountries, @url, @description, @tags, @postedAt, datetime('now')
   )
   ON CONFLICT(source, external_id) DO UPDATE SET
     title = excluded.title,
     company = excluded.company,
     location = excluded.location,
     remote = excluded.remote,
+    allowed_countries = excluded.allowed_countries,
     url = excluded.url,
     description = excluded.description,
     tags = excluded.tags,
@@ -59,6 +60,7 @@ export async function runIngestion(
             company: job.company,
             location: job.location,
             remote: job.remote ? 1 : 0,
+            allowedCountries: job.allowedCountries ? JSON.stringify(job.allowedCountries) : null,
             url: job.url,
             description: job.description,
             tags: JSON.stringify(job.tags ?? []),
