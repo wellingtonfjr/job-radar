@@ -101,10 +101,18 @@ export function createJobsRouter(db: Database.Database): Router {
     const params: Record<string, unknown> = {};
 
     if (keyword) {
-      conditions.push(
-        "(title LIKE @keyword ESCAPE '\\' OR company LIKE @keyword ESCAPE '\\' OR description LIKE @keyword ESCAPE '\\')"
-      );
-      params.keyword = `%${escapeLike(keyword)}%`;
+      // Compound job-title words are spelled inconsistently across sources
+      // ("Front End" / "Front-End" / "Frontend"), so both the search term
+      // and the matched columns have spaces/hyphens stripped before
+      // comparing - otherwise a plain "frontend" search misses most
+      // "Front End Developer" postings.
+      const normalizedKeyword = keyword.toLowerCase().replace(/[\s-]+/g, "");
+      conditions.push(`(
+        REPLACE(REPLACE(LOWER(title), ' ', ''), '-', '') LIKE @keyword ESCAPE '\\' OR
+        REPLACE(REPLACE(LOWER(company), ' ', ''), '-', '') LIKE @keyword ESCAPE '\\' OR
+        REPLACE(REPLACE(LOWER(description), ' ', ''), '-', '') LIKE @keyword ESCAPE '\\'
+      )`);
+      params.keyword = `%${escapeLike(normalizedKeyword)}%`;
     }
     if (location) {
       conditions.push("location LIKE @location ESCAPE '\\'");
