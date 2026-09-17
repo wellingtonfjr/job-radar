@@ -8,6 +8,7 @@ export function buildJobsQuery(filters: JobFilters): string {
   if (filters.location.trim()) params.set('location', filters.location.trim());
   if (filters.remoteOnly) params.set('remoteOnly', 'true');
   if (filters.source) params.set('source', filters.source);
+  if (filters.baseCountries.length > 0) params.set('baseCountries', filters.baseCountries.join(','));
   return params.toString();
 }
 

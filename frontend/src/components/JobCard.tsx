@@ -1,3 +1,4 @@
+import { countryName } from '../countries';
 import type { Job } from '../types';
 import { formatRelativeDate } from '../utils/formatDate';
 
@@ -32,6 +33,18 @@ export function JobCard({ job, isNew }: JobCardProps) {
         <span className="badge badge-source">{job.source}</span>
         <span className="job-date">{formatRelativeDate(job.postedAt)}</span>
       </div>
+
+      {job.remote && (
+        <div className="job-eligibility">
+          {job.allowedCountries ? (
+            <span className="eligibility-restricted">
+              Open to: {job.allowedCountries.map(countryName).join(', ')}
+            </span>
+          ) : (
+            <span className="eligibility-open">Open to any location</span>
+          )}
+        </div>
+      )}
 
       {job.tags.length > 0 && (
         <div className="job-tags">

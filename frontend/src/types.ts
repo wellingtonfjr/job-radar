@@ -6,6 +6,8 @@ export interface Job {
   company: string;
   location: string | null;
   remote: boolean;
+  /** ISO 3166-1 alpha-2 codes this job restricts candidates to, or null if unrestricted. */
+  allowedCountries: string[] | null;
   url: string;
   description: string | null;
   tags: string[];
@@ -23,6 +25,8 @@ export interface JobFilters {
   location: string;
   remoteOnly: boolean;
   source: string;
+  /** ISO 3166-1 alpha-2 codes the viewer is based in (union match). */
+  baseCountries: string[];
 }
 
 export const KNOWN_SOURCES = [

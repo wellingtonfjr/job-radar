@@ -17,6 +17,7 @@ function App() {
   const [locationInput, setLocationInput] = useState(initialFilters.location);
   const [remoteOnly, setRemoteOnly] = useState(initialFilters.remoteOnly);
   const [source, setSource] = useState(initialFilters.source);
+  const [baseCountries, setBaseCountries] = useState(initialFilters.baseCountries);
 
   const debouncedKeyword = useDebouncedValue(keywordInput, DEBOUNCE_MS);
   const debouncedLocation = useDebouncedValue(locationInput, DEBOUNCE_MS);
@@ -46,8 +47,9 @@ function App() {
       location: debouncedLocation,
       remoteOnly,
       source,
+      baseCountries,
     }),
-    [debouncedKeyword, debouncedLocation, remoteOnly, source],
+    [debouncedKeyword, debouncedLocation, remoteOnly, source, baseCountries],
   );
 
   useEffect(() => {
@@ -98,6 +100,8 @@ function App() {
         onRemoteOnlyChange={setRemoteOnly}
         source={source}
         onSourceChange={setSource}
+        baseCountries={baseCountries}
+        onBaseCountriesChange={setBaseCountries}
       />
 
       <main className="job-results">
