@@ -77,10 +77,25 @@ export function countryName(code: string): string {
   }
 }
 
+const MODE = String.raw`(?:fully\s+)?(?:remote|hybrid|on-?site)`;
+const MODE_PREFIX = new RegExp(String.raw`^${MODE}(?:\s+jobs?)?\b\s*(?:[-–—:,/|]\s*)?`, 'i');
+const MODE_SUFFIX = new RegExp(String.raw`\s*(?:[-–—,/|]\s*)?\(\s*${MODE}\s*\)$|\s*[-–—,/|]\s*${MODE}$`, 'i');
+
+/**
+ * Drops work-mode words the card already shows: "Remote - USA" → "USA",
+ * "United States (Remote)" → "United States", "Germany (Hybrid)" → "Germany".
+ */
+export function cleanLocation(location: string): string {
+  let s = location.trim().replace(MODE_PREFIX, '');
+  if (/^\(.*\)$/.test(s)) s = s.slice(1, -1);
+  return s.replace(MODE_SUFFIX, '').trim();
+}
+
 /** "Worldwide", or the posting's own locations with a "+N more" overflow. */
 export function locationChips(locations: string[], workplace: string, allowedCountries: string[] | null, max = 3): string[] {
   if (workplace === 'remote' && allowedCountries === null) return ['Worldwide'];
-  if (locations.length === 0) return [];
-  const shown = locations.slice(0, max);
-  return locations.length > max ? [...shown, `+${locations.length - max} more`] : shown;
+  const cleaned = Array.from(new Set(locations.map(cleanLocation).filter(Boolean)));
+  if (cleaned.length === 0) return [];
+  const shown = cleaned.slice(0, max);
+  return cleaned.length > max ? [...shown, `+${cleaned.length - max} more`] : shown;
 }

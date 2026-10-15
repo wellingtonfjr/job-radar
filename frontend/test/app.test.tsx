@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
@@ -10,12 +10,22 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const jobs = [makeJob(), makeJob({ id: 'lever:2', title: 'Product Designer', category: 'design', companyTier: null })];
 
+function stubMatchMedia(matches: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches,
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
 describe('App', () => {
   let requests: string[];
 
   beforeEach(() => {
     requests = [];
     window.history.replaceState(null, '', '/');
+    stubMatchMedia(false);
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) => {
@@ -38,33 +48,50 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
-  it('lists jobs, filters by category chip and keeps the filter in the URL', async () => {
+  it('lists roles, filters from the sidebar and keeps filters in the URL', async () => {
     render(<App />);
     expect(await screen.findByText('Senior Frontend Engineer')).toBeInTheDocument();
     expect(screen.getByText('Product Designer')).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Design' }));
-    expect(await screen.findByText(/1/, { selector: '.results__count' })).toBeInTheDocument();
+    const sidebar = screen.getByRole('complementary', { name: 'Filters' });
+    await userEvent.click(await within(sidebar).findByRole('checkbox', { name: /Design/ }));
+    expect(await screen.findByRole('button', { name: 'Remove filter Design' })).toBeInTheDocument();
     expect(screen.queryByText('Senior Frontend Engineer')).not.toBeInTheDocument();
     expect(window.location.search).toBe('?category=design');
     expect(requests.some((r) => r.includes('category=design'))).toBe(true);
   });
 
-  it('opens a job detail page and goes back', async () => {
+  it('opens the full detail page on narrow screens and goes back', async () => {
     render(<App />);
     await userEvent.click(await screen.findByRole('link', { name: 'Senior Frontend Engineer' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Senior Frontend Engineer' })).toBeInTheDocument();
     expect(screen.getByText('We build things.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Apply on company site/ })).toHaveAttribute('href', 'https://example.com/jobs/1');
 
-    await userEvent.click(screen.getByRole('link', { name: 'All jobs' }));
+    await userEvent.click(screen.getByRole('link', { name: /All roles/ }));
     expect(await screen.findByText('Product Designer')).toBeInTheDocument();
   });
 
-  it('shows a friendly message for jobs that no longer exist', async () => {
+  it('previews a role beside the list on wide screens', async () => {
+    stubMatchMedia(true);
+    window.history.replaceState(null, '', '/?q=split');
+    render(<App />);
+    const preview = screen.getByRole('complementary', { name: 'Role preview' });
+    expect(within(preview).getByText(/Select a role/)).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole('link', { name: 'Senior Frontend Engineer' }));
+    expect(await within(preview).findByRole('heading', { level: 2, name: 'Senior Frontend Engineer' })).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/');
+    expect(new URLSearchParams(window.location.search).get('job')).toBe('greenhouse:1');
+
+    await userEvent.click(within(preview).getByRole('button', { name: 'Close preview' }));
+    expect(within(preview).getByText(/Select a role/)).toBeInTheDocument();
+  });
+
+  it('shows a friendly message for roles that no longer exist', async () => {
     window.history.replaceState(null, '', '/jobs/missing');
     render(<App />);
-    expect(await screen.findByText('This job is no longer listed')).toBeInTheDocument();
+    expect(await screen.findByText('This role is no longer listed')).toBeInTheDocument();
   });
 
   it('shows an error with retry when the API is down', async () => {

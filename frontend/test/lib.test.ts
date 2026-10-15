@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { countActiveFilters, EMPTY_FILTERS, parseFilters, serializeFilters, toggle } from '../src/lib/filters';
-import { formatAge, formatSalary, locationChips } from '../src/lib/format';
+import { cleanLocation, formatAge, formatSalary, locationChips } from '../src/lib/format';
 import { matchRoute } from '../src/lib/router';
 
 describe('filters', () => {
@@ -62,6 +62,23 @@ describe('format', () => {
     expect(locationChips(['Remote'], 'remote', null)).toEqual(['Worldwide']);
     expect(locationChips(['A', 'B', 'C', 'D', 'E'], 'remote', ['US'])).toEqual(['A', 'B', 'C', '+2 more']);
     expect(locationChips(['Berlin'], 'onsite', null)).toEqual(['Berlin']);
+  });
+
+  it.each([
+    ['Remote - USA', 'USA'],
+    ['Remote, United States', 'United States'],
+    ['United States (Remote)', 'United States'],
+    ['Remote (Canada)', 'Canada'],
+    ['USA - Remote', 'USA'],
+    ['Remote', ''],
+    ['Remote job', ''],
+    ['Remotely, Berlin', 'Remotely, Berlin'],
+    ['Germany (Hybrid)', 'Germany'],
+    ['Hybrid - London', 'London'],
+    ['Berlin (Mitte)', 'Berlin (Mitte)'],
+    ['San Francisco, CA', 'San Francisco, CA'],
+  ])('cleanLocation(%s) = %s', (input, expected) => {
+    expect(cleanLocation(input)).toBe(expected);
   });
 });
 

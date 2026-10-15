@@ -1,6 +1,6 @@
 import type { Job } from '../api/types';
 import { formatAge, formatSalary, locationChips } from '../lib/format';
-import { EMPLOYMENT_TYPE_LABELS, SENIORITY_LABELS, WORKPLACE_LABELS } from '../lib/labels';
+import { EMPLOYMENT_TYPE_LABELS, PAY_BAND_LABELS, SENIORITY_LABELS, WORKPLACE_LABELS } from '../lib/labels';
 import { jobPath } from '../lib/router';
 import { CompanyLogo } from './CompanyLogo';
 import { Link } from './Link';
@@ -9,53 +9,73 @@ interface JobRowProps {
   job: Job;
   categoryName: string;
   isNew: boolean;
+  selected?: boolean;
+  /**
+   * Called instead of navigating (split view). Plain navigation to the
+   * detail page happens when it's absent or the click has modifiers.
+   */
+  onSelect?: () => void;
   onOpen?: () => void;
 }
 
-export function JobRow({ job, categoryName, isNew, onOpen }: JobRowProps) {
+export function JobRow({ job, categoryName, isNew, selected = false, onSelect, onOpen }: JobRowProps) {
   const salary = formatSalary(job.salary);
   const age = formatAge(job.postedAt ?? job.firstSeenAt);
+  const where = locationChips(job.locations, job.workplace, job.allowedCountries, 2).join(', ');
+  const facts = [
+    WORKPLACE_LABELS[job.workplace],
+    job.employmentType ? EMPLOYMENT_TYPE_LABELS[job.employmentType] : null,
+    job.seniority ? SENIORITY_LABELS[job.seniority] : null,
+    // The catch-all category adds nothing to a card.
+    job.category === 'other' ? null : categoryName,
+  ].filter(Boolean);
 
   return (
-    <article className={`job-row${isNew ? ' job-row--new' : ''}`}>
+    <article className={`job-card${selected ? ' job-card--selected' : ''}`} aria-current={selected ? 'true' : undefined}>
       <CompanyLogo name={job.company} src={job.companyLogo} />
-      <div className="job-row__main">
-        <h3 className="job-row__title">
-          {/* The title link is stretched over the whole row (see CSS). */}
-          <Link href={jobPath(job.id)} className="job-row__link" onNavigate={onOpen}>
+      <div className="job-card__body">
+        <div className="job-card__company">
+          {job.company}
+          {job.companyTier && <span className={`band band--${job.companyTier}`}>{PAY_BAND_LABELS[job.companyTier]}</span>}
+        </div>
+        <h3 className="job-card__title">
+          {/* Stretched over the card (see CSS) so the whole card is clickable. */}
+          <Link
+            href={jobPath(job.id)}
+            className="job-card__link"
+            onNavigate={onOpen}
+            onClick={(event) => {
+              if (!onSelect || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+              event.preventDefault();
+              onSelect();
+            }}
+          >
             {job.title}
           </Link>
-          <span className="job-row__company">
-            <span aria-hidden="true"> • </span>
-            <span className="visually-hidden"> at </span>
-            {job.company}
-          </span>
         </h3>
-        <ul className="tags" aria-label="Job details">
-          <li className="tag">{categoryName}</li>
-          {job.employmentType && <li className="tag">{EMPLOYMENT_TYPE_LABELS[job.employmentType]}</li>}
-          {job.seniority && <li className="tag">{SENIORITY_LABELS[job.seniority]}</li>}
-          {salary && <li className="tag tag--salary">{salary}</li>}
-          {job.workplace !== 'remote' && <li className="tag tag--workplace">{WORKPLACE_LABELS[job.workplace]}</li>}
-          {locationChips(job.locations, job.workplace, job.allowedCountries).map((loc) => (
-            <li key={loc} className="tag tag--location">
-              {loc}
-            </li>
-          ))}
-          {job.skills.slice(0, 3).map((skill) => (
-            <li key={skill} className="tag tag--skill">
-              {skill}
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className="job-row__aside">
-        {job.companyTier && (
-          <span className={`badge badge--tier badge--tier-${job.companyTier}`} title="Company pay tier, from the salaries it publishes">
-            Tier {job.companyTier}
-          </span>
+        <p className="job-card__facts">
+          {facts.join(' · ')}
+          {where && (
+            <>
+              {' · '}
+              <span className="job-card__where">{where}</span>
+            </>
+          )}
+        </p>
+        {(salary || job.skills.length > 0) && (
+          <ul className="job-card__chips" aria-label="Salary and stack">
+            {salary && <li className="salary">{salary}</li>}
+            {job.skills.slice(0, 4).map((skill) => (
+              <li key={skill} className="skill">
+                {skill}
+              </li>
+            ))}
+          </ul>
         )}
-        {isNew ? <span className="badge badge--new">New</span> : age && <span className="job-row__age">{age}</span>}
+      </div>
+      <div className="job-card__meta">
+        {isNew && <span className="new-flag">New</span>}
+        {age && <span className="age">{age.replace(' ago', '')}</span>}
       </div>
     </article>
   );
@@ -63,11 +83,12 @@ export function JobRow({ job, categoryName, isNew, onOpen }: JobRowProps) {
 
 export function JobRowSkeleton() {
   return (
-    <div className="job-row job-row--skeleton" aria-hidden="true">
-      <span className="company-logo company-logo--md skeleton" />
-      <div className="job-row__main">
-        <span className="skeleton skeleton--title" />
-        <span className="skeleton skeleton--tags" />
+    <div className="job-card job-card--skeleton" aria-hidden="true">
+      <span className="company-logo skeleton" />
+      <div className="job-card__body">
+        <span className="skeleton skeleton--line skeleton--short" />
+        <span className="skeleton skeleton--line" />
+        <span className="skeleton skeleton--line skeleton--mid" />
       </div>
     </div>
   );

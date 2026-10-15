@@ -1,12 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import type { Job, Stats } from '../api/types';
-import { CategoryChips } from '../components/CategoryChips';
-import { FilterBar } from '../components/FilterBar';
+import { ActiveFilters } from '../components/ActiveFilters';
+import { FilterPanel } from '../components/FilterPanel';
+import { FilterSheet } from '../components/FilterSheet';
+import { Icon } from '../components/Icon';
+import { JobPreview } from '../components/JobPreview';
 import { JobRow, JobRowSkeleton } from '../components/JobRow';
 import { StatusMessage } from '../components/StatusMessage';
-import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useJobs } from '../hooks/useJobs';
-import { countActiveFilters, EMPTY_FILTERS, parseFilters, serializeFilters, type Filters } from '../lib/filters';
+import { SPLIT_VIEW_QUERY, useMediaQuery } from '../hooks/useMediaQuery';
+import { countActiveFilters, EMPTY_FILTERS, listUrl, parseFilters, serializeFilters, type Filters } from '../lib/filters';
 import { formatCount } from '../lib/format';
 import { navigate } from '../lib/router';
 
@@ -16,38 +19,19 @@ interface JobsPageProps {
   lastVisit: string | null;
 }
 
-const SEARCH_DEBOUNCE_MS = 350;
 const DAY_MS = 86_400_000;
 
 let savedScrollY = 0;
 
-/** Filters live in the URL; replacing it re-renders the page with them. */
-function applyFilters(next: Filters): void {
-  const query = serializeFilters(next);
-  navigate(query ? `/?${query}` : '/', { replace: true });
-}
-
 export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
   const filters = useMemo(() => parseFilters(search), [search]);
-  const filterQuery = serializeFilters(filters);
-  const listing = useJobs(filterQuery);
+  const selectedJob = new URLSearchParams(search).get('job');
+  const listing = useJobs(serializeFilters(filters));
+  const splitView = useMediaQuery(SPLIT_VIEW_QUERY);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
-  const [searchInput, setSearchInput] = useState(filters.q);
-  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
-
-  // Typing updates the URL (and so the results) once the user pauses.
-  const latestFilters = useRef(filters);
-  latestFilters.current = filters;
-  useEffect(() => {
-    if (debouncedSearch.trim() !== latestFilters.current.q.trim()) applyFilters({ ...latestFilters.current, q: debouncedSearch });
-  }, [debouncedSearch]);
-
-  // Keep the input in sync when the URL changes from elsewhere (back/forward, clear).
-  const [syncedQ, setSyncedQ] = useState(filters.q);
-  if (filters.q !== syncedQ) {
-    setSyncedQ(filters.q);
-    if (filters.q.trim() !== searchInput.trim()) setSearchInput(filters.q);
-  }
+  const applyFilters = (next: Filters) => navigate(listUrl(next, selectedJob), { replace: true });
+  const selectJob = (id: string | null) => navigate(listUrl(filters, id), { replace: true });
 
   useLayoutEffect(() => {
     if (listing.restored) window.scrollTo(0, savedScrollY);
@@ -56,82 +40,60 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
   }, []);
 
   useEffect(() => {
-    document.title = 'job-radar · Real jobs, straight from the source';
+    document.title = 'job-radar · Open roles, verified daily';
   }, []);
-
-  const onSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    applyFilters({ ...filters, q: searchInput });
-  };
 
   const categoryName = (id: string) => stats?.categories.find((c) => c.id === id)?.name ?? id;
   const isNew = (job: Job) => {
-    const posted = Date.parse(job.postedAt ?? job.firstSeenAt);
-    const recentlyPosted = Date.now() - posted < DAY_MS;
-    const newSinceVisit = lastVisit !== null && job.firstSeenAt > lastVisit;
-    return recentlyPosted || newSinceVisit;
+    const recentlyPosted = Date.now() - Date.parse(job.postedAt ?? job.firstSeenAt) < DAY_MS;
+    return recentlyPosted || (lastVisit !== null && job.firstSeenAt > lastVisit);
   };
-  const hasFilters = countActiveFilters(filters) > 0 || filters.q.trim() !== '';
+  const activeCount = countActiveFilters(filters);
+  const hasQuery = activeCount > 0 || filters.q.trim() !== '';
+  const resultLabel = listing.status === 'ready' ? `Show ${formatCount(listing.total)} roles` : 'Show roles';
+
+  const panel = <FilterPanel filters={filters} stats={stats} onChange={applyFilters} />;
 
   return (
-    <>
-      <section className="hero">
-        <div className="container">
-          <h1 className="hero__title">
-            Real jobs, <span className="hero__accent">straight from the source</span>
-          </h1>
-          <p className="hero__subtitle">
-            {stats ? (
-              <>
-                {formatCount(stats.totals.openJobs)} open jobs from {formatCount(stats.totals.companies)} companies,
-                read directly from career pages and public job boards. Closed jobs disappear automatically.
-              </>
-            ) : (
-              'Open jobs read directly from career pages and public job boards. Closed jobs disappear automatically.'
-            )}
-          </p>
+    <div className={`workspace${splitView ? ' workspace--split' : ''}`}>
+      <aside className="sidebar" aria-label="Filters">
+        {panel}
+      </aside>
 
-          <form className="search" role="search" onSubmit={onSubmit}>
-            <span className="search__icon" aria-hidden="true">
-              ⌕
-            </span>
-            <input
-              type="search"
-              className="search__input"
-              placeholder="Search job title, company or technology…"
-              aria-label="Search jobs"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
-            <button type="submit" className="button button--primary search__submit">
-              Search
-            </button>
-          </form>
+      <FilterSheet open={sheetOpen} onClose={() => setSheetOpen(false)} resultLabel={resultLabel}>
+        {panel}
+      </FilterSheet>
 
-          <FilterBar filters={filters} stats={stats} onChange={applyFilters} />
-          {stats && <CategoryChips categories={stats.categories} selected={filters.category} onChange={(category) => applyFilters({ ...filters, category })} />}
+      <main className="results" id="main">
+        <div className="results__header">
+          <div>
+            <h1 className="results__title">Open roles</h1>
+            <p className="results__summary" aria-live="polite">
+              {listing.status === 'ready' ? (
+                <>
+                  <span className="num">{formatCount(listing.total)}</span> {hasQuery ? 'matching' : 'verified open'}
+                  {stats && (
+                    <>
+                      {' · '}
+                      <span className="num">{formatCount(stats.totals.newLast7Days)}</span> new this week
+                    </>
+                  )}
+                </>
+              ) : listing.status === 'loading' ? (
+                'Scanning…'
+              ) : null}
+            </p>
+          </div>
+          <button type="button" className="button button--ghost filters-toggle" onClick={() => setSheetOpen(true)}>
+            <Icon name="filter" /> Filters
+            {activeCount > 0 && <span className="count-dot">{activeCount}</span>}
+          </button>
         </div>
-      </section>
 
-      <main className="container results" id="main">
-        <div className="results__meta" aria-live="polite">
-          <span>
-            {listing.status === 'ready' && (
-              <>
-                <strong className="results__count">{formatCount(listing.total)}</strong> matching jobs
-              </>
-            )}
-            {listing.status === 'loading' && 'Searching…'}
-          </span>
-          {stats && (
-            <span>
-              <strong>{formatCount(stats.totals.newLast7Days)}</strong> added this week
-            </span>
-          )}
-        </div>
+        <ActiveFilters filters={filters} stats={stats} onChange={applyFilters} />
 
         {listing.status === 'loading' && (
-          <div className="job-list" aria-busy="true" aria-label="Loading jobs">
+          <div className="job-list" aria-busy="true" aria-label="Loading roles">
             {Array.from({ length: 6 }, (_, i) => (
               <JobRowSkeleton key={i} />
             ))}
@@ -139,17 +101,17 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
         )}
 
         {listing.status === 'error' && (
-          <StatusMessage title="Couldn't load jobs" tone="error" action={{ label: 'Try again', onClick: listing.retry }}>
+          <StatusMessage title="Couldn't load roles" tone="error" action={{ label: 'Try again', onClick: listing.retry }}>
             {listing.error}
           </StatusMessage>
         )}
 
         {listing.status === 'ready' && listing.jobs.length === 0 && (
           <StatusMessage
-            title="No jobs match these filters"
-            action={hasFilters ? { label: 'Clear search and filters', onClick: () => applyFilters(EMPTY_FILTERS) } : undefined}
+            title="Nothing on the radar for this search"
+            action={hasQuery ? { label: 'Clear search and filters', onClick: () => applyFilters(EMPTY_FILTERS) } : undefined}
           >
-            {hasFilters ? 'Try removing a filter or searching for a broader term.' : 'No jobs have been ingested yet. Run npm run ingest in backend/.'}
+            {hasQuery ? 'Try fewer filters or a broader term.' : 'No roles ingested yet. Run npm run ingest in backend/.'}
           </StatusMessage>
         )}
 
@@ -162,6 +124,8 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
                   job={job}
                   categoryName={categoryName(job.category)}
                   isNew={isNew(job)}
+                  selected={splitView && job.id === selectedJob}
+                  onSelect={splitView ? () => selectJob(job.id) : undefined}
                   onOpen={() => {
                     savedScrollY = window.scrollY;
                   }}
@@ -169,18 +133,28 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
               ))}
             </div>
             <div className="results__more">
-              {listing.error && <p className="results__more-error" role="alert">{listing.error}</p>}
+              {listing.error && (
+                <p className="results__more-error" role="alert">
+                  {listing.error}
+                </p>
+              )}
               {listing.hasMore ? (
-                <button type="button" className="button button--primary" onClick={listing.loadMore} disabled={listing.loadingMore}>
-                  {listing.loadingMore ? 'Loading…' : 'More jobs'}
+                <button type="button" className="button button--ghost" onClick={listing.loadMore} disabled={listing.loadingMore}>
+                  {listing.loadingMore ? 'Loading…' : `Load more · ${formatCount(listing.total - listing.jobs.length)} left`}
                 </button>
               ) : (
-                <p className="results__end">You’ve seen all {formatCount(listing.total)} jobs.</p>
+                <p className="results__end">That's all {formatCount(listing.total)}.</p>
               )}
             </div>
           </>
         )}
       </main>
-    </>
+
+      {splitView && (
+        <aside className="preview" aria-label="Role preview">
+          <JobPreview id={selectedJob} stats={stats} onClose={() => selectJob(null)} />
+        </aside>
+      )}
+    </div>
   );
 }

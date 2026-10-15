@@ -105,6 +105,8 @@ describe("classification", () => {
     ["Recruiter", "hr"],
     ["Events and Partnership Marketing Manager", "marketing"],
     ["Partnerships Manager", "sales"],
+    ["Senior Product Marketing Manager, Infrastructure", "marketing"],
+    ["Data Engineer, Marketing", "data"],
     ["Softwareentwickler*in Web", "software-development"],
     ["Forklift Operator", "other"],
   ])("category of %s", (title, expected) => {

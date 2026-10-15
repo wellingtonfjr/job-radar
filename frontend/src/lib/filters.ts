@@ -105,3 +105,14 @@ export function countActiveFilters(filters: Filters): number {
 export function toggle<T>(values: readonly T[], value: T): T[] {
   return values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
 }
+
+/**
+ * The list page URL for these filters. The split-view selection rides along
+ * as `job`, so a shared link opens the same preview.
+ */
+export function listUrl(filters: Filters, selectedJob: string | null = null): string {
+  const params = new URLSearchParams(serializeFilters(filters));
+  if (selectedJob) params.set('job', selectedJob);
+  const query = params.toString();
+  return query ? `/?${query}` : '/';
+}

@@ -69,8 +69,14 @@ function firstMatch<T>(rules: Rule<T>[], texts: readonly (string | null | undefi
   return null;
 }
 
+/**
+ * The role usually comes before a comma/dash and the team or domain after
+ * it ("Product Marketing Manager, Infrastructure"), so that part decides
+ * first, then the whole title, then source hints.
+ */
 export function classifyCategory(title: string, hints: readonly string[] = []): CategoryId {
-  return firstMatch(CATEGORY_RULES, [title]) ?? firstMatch(CATEGORY_RULES, hints) ?? "other";
+  const role = title.split(/\s*(?:,|\s[-–—|]\s|\()/)[0] ?? title;
+  return firstMatch(CATEGORY_RULES, [role, title]) ?? firstMatch(CATEGORY_RULES, hints) ?? "other";
 }
 
 /**

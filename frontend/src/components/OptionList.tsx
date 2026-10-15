@@ -7,38 +7,43 @@ export interface Option {
 }
 
 interface OptionListProps {
-  legend: string;
+  label: string;
   options: Option[];
   selected: readonly string[];
   onToggle: (value: string) => void;
   /** Radio behaviour: picking an option replaces the selection. */
   single?: boolean;
   searchable?: boolean;
-  hint?: string;
+  /** Show this many options until "Show all" is pressed (search shows all matches). */
+  limit?: number;
 }
 
-/** Checkbox (or radio) list used inside filter panels, optionally searchable. */
-export function OptionList({ legend, options, selected, onToggle, single = false, searchable = false, hint }: OptionListProps) {
+/** Checkbox (or radio) list for the filter sidebar, optionally searchable. */
+export function OptionList({ label, options, selected, onToggle, single = false, searchable = false, limit }: OptionListProps) {
   const [term, setTerm] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const name = useId();
-  const visible = term
-    ? options.filter((o) => o.label.toLowerCase().includes(term.trim().toLowerCase()))
-    : options;
+
+  const needle = term.trim().toLowerCase();
+  const matches = needle ? options.filter((o) => o.label.toLowerCase().includes(needle)) : options;
+  // Selected options always stay visible, even past the limit.
+  const visible =
+    limit && !showAll && !needle
+      ? matches.filter((o, i) => i < limit || selected.includes(o.value))
+      : matches;
 
   return (
-    <fieldset className="option-list">
-      <legend className="option-list__legend">{legend}</legend>
-      {hint && <p className="option-list__hint">{hint}</p>}
+    <div className="option-list" role="group" aria-label={label}>
       {searchable && (
-        <input
-          type="search"
-          className="option-list__search"
-          placeholder={`Search ${legend.toLowerCase()}…`}
-          aria-label={`Search ${legend.toLowerCase()}`}
-          value={term}
-          onChange={(e) => setTerm(e.target.value)}
-          autoFocus
-        />
+        <div className="option-list__search">
+          <input
+            type="search"
+            placeholder={`Search ${label.toLowerCase()}`}
+            aria-label={`Search ${label.toLowerCase()}`}
+            value={term}
+            onChange={(e) => setTerm(e.target.value)}
+          />
+        </div>
       )}
       <div className="option-list__items">
         {visible.map((option) => (
@@ -55,6 +60,11 @@ export function OptionList({ legend, options, selected, onToggle, single = false
         ))}
         {visible.length === 0 && <p className="option-list__empty">No matches</p>}
       </div>
-    </fieldset>
+      {limit && !needle && matches.length > visible.length && (
+        <button type="button" className="link-button" onClick={() => setShowAll(true)}>
+          Show all {matches.length}
+        </button>
+      )}
+    </div>
   );
 }

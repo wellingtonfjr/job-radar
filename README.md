@@ -1,11 +1,13 @@
 # job-radar
 
-Real, current job openings, pulled straight from employers' career pages and
-from public job boards, normalized into one searchable list. It's inspired by
-[Remotive](https://remotive.com) (its listing UX and normalized job metadata)
-and [NaGringa](https://www.nagringa.dev/vagas) (reading company career pages
-directly, auto-retiring filled jobs, and pay tiers). Unlike them, there's no
-paywall: every job links to the original posting.
+Open roles, verified daily: job-radar scans employers' career pages and public
+job boards, normalizes every posting (category, level, work mode, salary,
+where you can work from, stack) and drops roles as soon as they're taken
+down. Every role links to the original posting.
+
+The UI is a search-first workspace: filters in a sidebar (a full-screen sheet
+on phones), removable filter tokens, and on wide screens a list + preview
+split view whose selection is part of the URL (`?job=…`).
 
 ## Why the jobs are "real and updated"
 
@@ -15,7 +17,7 @@ paywall: every job links to the original posting.
 | Reposts of reposts | Postings come from the employer's own ATS (Greenhouse, Lever, Ashby) first. When the same opening also appears on an aggregator, only the ATS copy is shown (see `recomputeCanonical`). |
 | "Remote" that isn't open to you | Locations are parsed into ISO country lists (regions like *EMEA* and *LATAM* are expanded). The **Your location** filter shows remote jobs open to that country, plus hybrid and on-site jobs located there. |
 | No salary info | Salaries come from structured fields (Ashby, Lever, Himalayas, Jobicy) or from pay-transparency text in descriptions ("base salary range is $150,000 – $190,000"). They're annualized to approximate USD for the min-salary filter. |
-| Can't tell good payers apart | **Company tier** (S ≥ $120k, A ≥ $90k, B ≥ $50k) is the median of the salaries each company *publishes*, never a guess. Companies with fewer than 2 salaries get no tier. |
+| Can't tell good payers apart | **Pay band** (Top ≥ $120k, High ≥ $90k, Fair ≥ $50k) is the median of the salaries each company *publishes*, never a guess. Companies with fewer than 2 salaries get no band. (API field: `companyTier` = `S`/`A`/`B`.) |
 
 ## Sources
 
@@ -78,7 +80,7 @@ intervals, and source ids to limit the run (`npm run ingest -- --force lever`).
 | `seniority` | `senior,lead` | `intern` · `junior` · `mid` · `senior` · `lead` · `executive` |
 | `type` | `full_time,contract` | employment type |
 | `skills` | `TypeScript,Go` | any of |
-| `tier` | `S,A` | company pay tier |
+| `tier` | `S,A` | company pay band (`S` top, `A` high, `B` fair) |
 | `minSalary` | `100000` | ≈ USD/year; jobs without a salary are excluded |
 | `postedWithin` | `7` | days |
 | `source`, `company` | `ashby`, `openai` | `source` shows that source's own copies (no dedup) |
