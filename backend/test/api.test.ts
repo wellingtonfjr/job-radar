@@ -1,0 +1,105 @@
+import type { AddressInfo } from "node:net";
+import type { Server } from "node:http";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createApp } from "../src/app.js";
+import { openDb, type Db } from "../src/db/index.js";
+import { runIngestion } from "../src/ingestion/pipeline.js";
+import { fakeSource, rawJob } from "./helpers.js";
+
+let db: Db;
+let server: Server;
+let base: string;
+
+async function get(path: string): Promise<{ status: number; body: any }> {
+  const res = await fetch(`${base}${path}`);
+  return { status: res.status, body: await res.json() };
+}
+
+beforeAll(async () => {
+  db = openDb(":memory:");
+  const ats = fakeSource("greenhouse");
+  const now = new Date();
+  const daysAgo = (d: number) => new Date(now.getTime() - d * 86_400_000).toISOString();
+  ats.respond({
+    results: [
+      {
+        feed: "acme",
+        complete: true,
+        jobs: [
+          rawJob({ externalId: "1", title: "Senior Front-End Engineer", descriptionHtml: "<p>React, TypeScript</p>", salary: { min: 150_000, max: 180_000, currency: "USD", period: "year" }, postedAt: daysAgo(1) }),
+          rawJob({ externalId: "2", title: "Product Designer", locations: ["Berlin, Germany"], workplace: "onsite", postedAt: daysAgo(3) }),
+          rawJob({ externalId: "3", title: "Backend Engineer", locations: ["Remote - USA"], descriptionHtml: "<p>Go and Kafka. Python</p>", postedAt: daysAgo(20) }),
+          rawJob({ externalId: "4", title: "Account Executive", locations: ["Remote, LATAM"], postedAt: daysAgo(2) }),
+        ],
+      },
+    ],
+    errors: [],
+  });
+  await runIngestion(db, [ats], { staleAfterDays: 30 });
+
+  server = createApp(db).listen(0);
+  base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+});
+
+afterAll(() => {
+  server.close();
+  db.close();
+});
+
+describe("GET /api/jobs", () => {
+  it("lists newest first with pagination metadata", async () => {
+    const { status, body } = await get("/api/jobs?pageSize=2");
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ total: 4, page: 1, pageSize: 2, hasMore: true });
+    expect(body.jobs.map((j: any) => j.id)).toEqual(["greenhouse:1", "greenhouse:4"]);
+    expect(body.jobs[0]).toMatchObject({ sourceName: "Greenhouse", category: "software-development", seniority: "senior", skills: ["TypeScript", "React"] });
+    expect(body.jobs[0]).not.toHaveProperty("description");
+  });
+
+  it("searches spelling-insensitively across words", async () => {
+    const { body } = await get("/api/jobs?q=frontend%20senior");
+    expect(body.jobs.map((j: any) => j.id)).toEqual(["greenhouse:1"]);
+  });
+
+  it.each([
+    ["category=design", ["greenhouse:2"]],
+    ["workplace=onsite", ["greenhouse:2"]],
+    ["skills=Go,Kafka", ["greenhouse:3"]],
+    ["minSalary=100000", ["greenhouse:1"]],
+    ["postedWithin=7&category=software-development", ["greenhouse:1"]],
+    // BR: unrestricted remote + LATAM; never the Berlin on-site or US-only jobs.
+    ["country=br", ["greenhouse:1", "greenhouse:4"]],
+    ["country=DE", ["greenhouse:1", "greenhouse:2"]],
+  ])("filters by %s", async (query, ids) => {
+    const { body } = await get(`/api/jobs?${query}`);
+    expect(body.jobs.map((j: any) => j.id)).toEqual(ids);
+  });
+
+  it("rejects invalid filters with 400", async () => {
+    const { status, body } = await get("/api/jobs?category=nope&country=Brazil");
+    expect(status).toBe(400);
+    expect(Object.keys(body.details)).toEqual(expect.arrayContaining(["category", "country"]));
+  });
+});
+
+describe("GET /api/jobs/:id", () => {
+  it("returns the full job with description", async () => {
+    const { status, body } = await get("/api/jobs/greenhouse%3A1");
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ id: "greenhouse:1", description: "React, TypeScript", closedAt: null, alsoOn: [] });
+  });
+
+  it("404s for unknown ids", async () => {
+    expect((await get("/api/jobs/nope")).status).toBe(404);
+  });
+});
+
+describe("GET /api/stats", () => {
+  it("reports totals, facets and source health", async () => {
+    const { body } = await get("/api/stats");
+    expect(body.totals).toMatchObject({ openJobs: 4, companies: 1, remote: 3, withSalary: 1, newLast7Days: 3 });
+    expect(body.categories.find((c: any) => c.id === "design")).toMatchObject({ count: 1 });
+    expect(body.countries).toEqual(expect.arrayContaining(["BR", "DE", "US"]));
+    expect(body.sources.find((s: any) => s.id === "greenhouse")).toMatchObject({ openJobs: 4, lastRun: { status: "ok", fetched: 4 } });
+  });
+});

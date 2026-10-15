@@ -1,0 +1,56 @@
+const USER_AGENT = "job-radar/0.2 (+https://github.com/wellingtonfjr/job-radar)";
+const DEFAULT_TIMEOUT_MS = 20_000;
+
+export class HttpError extends Error {
+  constructor(
+    readonly url: string,
+    readonly status: number,
+  ) {
+    super(`${url} responded ${status}`);
+    this.name = "HttpError";
+  }
+}
+
+/**
+ * GET + JSON with a timeout and one retry on network errors / 5xx / 429.
+ * 4xx responses are not retried: they mean the board doesn't exist or the
+ * request is wrong, and retrying only adds load on the provider.
+ */
+export async function getJson<T>(url: string, { timeoutMs = DEFAULT_TIMEOUT_MS, retries = 1 } = {}): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) throw new HttpError(url, res.status);
+      return (await res.json()) as T;
+    } catch (err) {
+      const retryable = !(err instanceof HttpError) || err.status >= 500 || err.status === 429;
+      if (!retryable || attempt >= retries) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 1_000 * (attempt + 1)));
+    }
+  }
+}
+
+/** Runs `fn` over `items` with at most `limit` in flight, to be polite to providers. */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < items.length) {
+      const index = next++;
+      try {
+        results[index] = { status: "fulfilled", value: await fn(items[index] as T) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}

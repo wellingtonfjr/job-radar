@@ -1,26 +1,28 @@
-import express from "express";
+import { createApp } from "./app.js";
+import { config } from "./config.js";
 import { openDb } from "./db/index.js";
-import { createJobsRouter } from "./api/jobs.js";
+import { startScheduler } from "./ingestion/scheduler.js";
+import { SOURCES } from "./sources/index.js";
 
-const app = express();
-const db = openDb();
-const PORT = process.env.PORT ?? 3001;
+const db = openDb(config.dbPath);
+const app = createApp(db, { corsOrigin: config.corsOrigin });
 
-// Local dashboard runs on a different origin (Vite dev server); this is a
-// read-only public API with no auth/cookies, so an open CORS policy is fine.
-app.use((_req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type");
-  next();
+const server = app.listen(config.port, () => {
+  console.log(`job-radar API listening on http://localhost:${config.port}`);
 });
 
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
+const scheduler =
+  config.schedulerTickMinutes > 0
+    ? startScheduler(db, SOURCES, { tickMinutes: config.schedulerTickMinutes, staleAfterDays: config.staleAfterDays })
+    : null;
+if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");
 
-app.use("/api/jobs", createJobsRouter(db));
-
-app.listen(PORT, () => {
-  console.log(`job-radar backend listening on http://localhost:${PORT}`);
-});
+function shutdown(): void {
+  scheduler?.stop();
+  server.close(() => {
+    db.close();
+    process.exit(0);
+  });
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

@@ -1,82 +1,277 @@
-import type Database from "better-sqlite3";
-import type { JobSourceAdapter } from "../adapters/types.js";
-import type { NewJob } from "../types/job.js";
+import type { Db } from "../db/index.js";
+import type { NormalizedJob } from "../domain/job.js";
+import { companyKey, normalizeJob } from "../normalize/index.js";
+import { toSearchKey } from "../normalize/text.js";
+import { errorMessage } from "../sources/http.js";
+import type { FeedError, SourceAdapter } from "../sources/types.js";
 
-export interface IngestionSummary {
+export interface SourceRunSummary {
   source: string;
+  status: "ok" | "partial" | "error" | "skipped";
   fetched: number;
   inserted: number;
+  closed: number;
+  errors: FeedError[];
 }
 
-// `first_seen_at` is only ever set by the SQL default (`datetime('now')`) on
-// the INSERT branch. The ON CONFLICT UPDATE clause intentionally omits it,
-// so a re-ingested job keeps the timestamp from when it was first seen.
+export interface IngestionOptions {
+  /** Ignore each source's minimum interval. */
+  force?: boolean;
+  now?: () => Date;
+  staleAfterDays: number;
+}
+
+const SOURCE_RANK = { ats: 0, aggregator: 1 } as const;
+
+// `first_seen_at` is only written on INSERT; re-seeing a job refreshes
+// everything else, bumps `last_seen_at` and re-opens it if it was closed.
 const UPSERT_SQL = `
   INSERT INTO jobs (
-    id, source, external_id, title, company, location, remote,
-    allowed_countries, url, description, tags, posted_at, first_seen_at
+    id, source, feed, external_id, title, company, company_key, company_logo, url, locations,
+    workplace, allowed_countries, category, seniority, employment_type, salary_min, salary_max,
+    salary_currency, salary_period, salary_min_usd_year, skills, tags, description, search_text,
+    posted_at, expires_at, fingerprint, source_rank, first_seen_at, last_seen_at, closed_at
   ) VALUES (
-    @id, @source, @externalId, @title, @company, @location, @remote,
-    @allowedCountries, @url, @description, @tags, @postedAt, datetime('now')
+    @id, @source, @feed, @externalId, @title, @company, @companyKey, @companyLogo, @url, @locations,
+    @workplace, @allowedCountries, @category, @seniority, @employmentType, @salaryMin, @salaryMax,
+    @salaryCurrency, @salaryPeriod, @salaryMinUsdYear, @skills, @tags, @description, @searchText,
+    @postedAt, @expiresAt, @fingerprint, @sourceRank, @seenAt, @seenAt, NULL
   )
   ON CONFLICT(source, external_id) DO UPDATE SET
+    feed = excluded.feed,
     title = excluded.title,
     company = excluded.company,
-    location = excluded.location,
-    remote = excluded.remote,
-    allowed_countries = excluded.allowed_countries,
+    company_key = excluded.company_key,
+    company_logo = excluded.company_logo,
     url = excluded.url,
-    description = excluded.description,
+    locations = excluded.locations,
+    workplace = excluded.workplace,
+    allowed_countries = excluded.allowed_countries,
+    category = excluded.category,
+    seniority = excluded.seniority,
+    employment_type = excluded.employment_type,
+    salary_min = excluded.salary_min,
+    salary_max = excluded.salary_max,
+    salary_currency = excluded.salary_currency,
+    salary_period = excluded.salary_period,
+    salary_min_usd_year = excluded.salary_min_usd_year,
+    skills = excluded.skills,
     tags = excluded.tags,
-    posted_at = excluded.posted_at
+    description = excluded.description,
+    search_text = excluded.search_text,
+    posted_at = COALESCE(excluded.posted_at, jobs.posted_at),
+    expires_at = excluded.expires_at,
+    fingerprint = excluded.fingerprint,
+    source_rank = excluded.source_rank,
+    last_seen_at = excluded.last_seen_at,
+    closed_at = NULL
 `;
 
-/**
- * Fetches jobs from every adapter in parallel and upserts them into the
- * `jobs` table. A single adapter throwing/rejecting never aborts the whole
- * run — it's logged and reported with fetched=0/inserted=0 in the summary.
- */
-export async function runIngestion(
-  db: Database.Database,
-  adapters: JobSourceAdapter[]
-): Promise<IngestionSummary[]> {
-  const existsStmt = db.prepare("SELECT 1 FROM jobs WHERE source = ? AND external_id = ?");
-  const upsertStmt = db.prepare(UPSERT_SQL);
+function toRow(job: NormalizedJob, sourceRank: number, seenAt: string): Record<string, unknown> {
+  return {
+    id: job.id,
+    source: job.source,
+    feed: job.feed,
+    externalId: job.externalId,
+    title: job.title,
+    company: job.company,
+    companyKey: companyKey(job.company),
+    companyLogo: job.companyLogo,
+    url: job.url,
+    locations: JSON.stringify(job.locations),
+    workplace: job.workplace,
+    allowedCountries: job.allowedCountries ? JSON.stringify(job.allowedCountries) : null,
+    category: job.category,
+    seniority: job.seniority,
+    employmentType: job.employmentType,
+    salaryMin: job.salary?.min ?? null,
+    salaryMax: job.salary?.max ?? null,
+    salaryCurrency: job.salary?.currency ?? null,
+    salaryPeriod: job.salary?.period ?? null,
+    salaryMinUsdYear: job.salaryMinUsdYear,
+    skills: JSON.stringify(job.skills),
+    tags: JSON.stringify(job.tags),
+    description: job.description,
+    searchText: toSearchKey([job.title, job.company, ...job.skills, ...job.tags].join(" ")),
+    postedAt: job.postedAt,
+    expiresAt: job.expiresAt,
+    fingerprint: job.fingerprint,
+    sourceRank,
+    seenAt,
+  };
+}
 
-  const settled = await Promise.allSettled(
-    adapters.map(async (adapter): Promise<IngestionSummary> => {
-      const fetched: NewJob[] = await adapter.fetchJobs();
+function isDue(db: Db, source: SourceAdapter, now: Date): boolean {
+  const last = db
+    .prepare("SELECT started_at FROM source_runs WHERE source = ? AND status != 'error' ORDER BY started_at DESC LIMIT 1")
+    .get(source.id) as { started_at: string } | undefined;
+  if (!last) return true;
+  return now.getTime() - Date.parse(last.started_at) >= source.minIntervalMinutes * 60_000;
+}
 
-      let inserted = 0;
-      const upsertAll = db.transaction((newJobs: NewJob[]) => {
-        for (const job of newJobs) {
-          const alreadyExists = existsStmt.get(job.source, job.externalId);
-          if (!alreadyExists) inserted += 1;
-          upsertStmt.run({
-            id: `${job.source}:${job.externalId}`,
-            source: job.source,
-            externalId: job.externalId,
-            title: job.title,
-            company: job.company,
-            location: job.location,
-            remote: job.remote ? 1 : 0,
-            allowedCountries: job.allowedCountries ? JSON.stringify(job.allowedCountries) : null,
-            url: job.url,
-            description: job.description,
-            tags: JSON.stringify(job.tags ?? []),
-            postedAt: job.postedAt,
-          });
+/** Fetches one source and writes its results. Never throws. */
+export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Promise<SourceRunSummary> {
+  const startedAt = now.toISOString();
+  const runId = db.prepare("INSERT INTO source_runs (source, started_at) VALUES (?, ?)").run(source.id, startedAt)
+    .lastInsertRowid;
+
+  const summary: SourceRunSummary = { source: source.id, status: "ok", fetched: 0, inserted: 0, closed: 0, errors: [] };
+  try {
+    const outcome = await source.fetchJobs();
+    summary.errors = outcome.errors;
+
+    const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");
+    const upsert = db.prepare(UPSERT_SQL);
+    // Anything in a complete feed that this run didn't touch is gone upstream.
+    const closeMissing = db.prepare(
+      "UPDATE jobs SET closed_at = @now WHERE source = @source AND feed = @feed AND closed_at IS NULL AND last_seen_at < @seenAt",
+    );
+
+    for (const result of outcome.results) {
+      const seen = new Map<string, NormalizedJob>();
+      for (const raw of result.jobs) {
+        try {
+          const job = normalizeJob(source.id, result.feed, raw);
+          if (job.title && job.url) seen.set(job.id, job);
+        } catch (err) {
+          summary.errors.push({ feed: result.feed, error: `normalize ${raw.externalId}: ${errorMessage(err)}` });
         }
-      });
-      upsertAll(fetched);
+      }
 
-      return { source: adapter.source, fetched: fetched.length, inserted };
-    })
+      db.transaction(() => {
+        for (const job of seen.values()) {
+          if (!exists.get(job.id)) summary.inserted += 1;
+          upsert.run(toRow(job, SOURCE_RANK[source.kind], startedAt));
+        }
+        if (result.complete) {
+          summary.closed += closeMissing.run({ now: startedAt, source: source.id, feed: result.feed, seenAt: startedAt }).changes;
+        }
+      })();
+      summary.fetched += seen.size;
+    }
+
+    if (summary.errors.length > 0) summary.status = outcome.results.length > 0 ? "partial" : "error";
+  } catch (err) {
+    summary.status = "error";
+    summary.errors.push({ feed: "*", error: errorMessage(err) });
+  }
+
+  db.prepare(
+    "UPDATE source_runs SET finished_at = ?, status = ?, fetched = ?, inserted = ?, closed = ?, errors = ? WHERE id = ?",
+  ).run(
+    new Date().toISOString(),
+    summary.status,
+    summary.fetched,
+    summary.inserted,
+    summary.closed,
+    JSON.stringify(summary.errors.slice(0, 50)),
+    runId,
   );
+  return summary;
+}
 
-  return settled.map((result, i) => {
-    if (result.status === "fulfilled") return result.value;
-    console.error(`[ingestion] adapter "${adapters[i].source}" failed:`, result.reason);
-    return { source: adapters[i].source, fetched: 0, inserted: 0 };
-  });
+/**
+ * Retires jobs we can no longer vouch for: past their source-given expiry,
+ * or (for feeds that are only partially read) not seen for `staleAfterDays`.
+ */
+export function retireStaleJobs(db: Db, now: Date, staleAfterDays: number): number {
+  const nowIso = now.toISOString();
+  const staleBefore = new Date(now.getTime() - staleAfterDays * 86_400_000).toISOString();
+  return db
+    .prepare(
+      `UPDATE jobs SET closed_at = @now
+       WHERE closed_at IS NULL AND ((expires_at IS NOT NULL AND expires_at < @now) OR last_seen_at < @staleBefore)`,
+    )
+    .run({ now: nowIso, staleBefore }).changes;
+}
+
+/**
+ * Hides cross-source copies of the same opening: a job is non-canonical when
+ * another *source* has it open with a better rank (the employer's own ATS
+ * beats aggregators). Same-source matches are left alone — one company
+ * posting "Account Executive" in five cities is five real openings.
+ */
+export function recomputeCanonical(db: Db): void {
+  db.exec(`
+    UPDATE jobs SET canonical = closed_at IS NULL AND NOT EXISTS (
+      SELECT 1 FROM jobs o
+      WHERE o.fingerprint = jobs.fingerprint
+        AND o.source != jobs.source
+        AND o.closed_at IS NULL
+        AND (o.source_rank < jobs.source_rank OR (o.source_rank = jobs.source_rank AND o.source < jobs.source))
+    )
+  `);
+}
+
+const TIER_THRESHOLDS: [string, number][] = [
+  ["S", 120_000],
+  ["A", 90_000],
+  ["B", 50_000],
+];
+const MIN_TIER_SAMPLES = 2;
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? (sorted[mid] as number) : ((sorted[mid - 1] as number) + (sorted[mid] as number)) / 2;
+}
+
+/**
+ * Pay tier per company from the salaries it actually publishes. Senior-level
+ * postings are used when there are enough of them (tiers describe senior
+ * pay); otherwise every posting with a salary.
+ */
+export function recomputeCompanyTiers(db: Db): void {
+  const rows = db
+    .prepare(
+      `SELECT company_key, seniority, salary_min_usd_year AS usd FROM jobs
+       WHERE closed_at IS NULL AND salary_min_usd_year IS NOT NULL AND salary_period = 'year'`,
+    )
+    .all() as { company_key: string; seniority: string | null; usd: number }[];
+
+  const byCompany = new Map<string, { senior: number[]; all: number[] }>();
+  for (const row of rows) {
+    const entry = byCompany.get(row.company_key) ?? { senior: [], all: [] };
+    entry.all.push(row.usd);
+    if (row.seniority === "senior" || row.seniority === "lead") entry.senior.push(row.usd);
+    byCompany.set(row.company_key, entry);
+  }
+
+  const upsert = db.prepare(
+    `INSERT INTO companies (company_key, tier, median_salary_usd, salary_samples) VALUES (?, ?, ?, ?)
+     ON CONFLICT(company_key) DO UPDATE SET tier = excluded.tier, median_salary_usd = excluded.median_salary_usd,
+       salary_samples = excluded.salary_samples`,
+  );
+  db.transaction(() => {
+    db.exec("DELETE FROM companies");
+    for (const [key, { senior, all }] of byCompany) {
+      const sample = senior.length >= MIN_TIER_SAMPLES ? senior : all;
+      if (sample.length < MIN_TIER_SAMPLES) continue;
+      const value = Math.round(median(sample));
+      const tier = TIER_THRESHOLDS.find(([, min]) => value >= min)?.[0] ?? null;
+      upsert.run(key, tier, value, sample.length);
+    }
+  })();
+}
+
+/**
+ * Runs every due source (in parallel — they're different hosts), then the
+ * post-processing that depends on the whole dataset.
+ */
+export async function runIngestion(db: Db, sources: SourceAdapter[], options: IngestionOptions): Promise<SourceRunSummary[]> {
+  const now = options.now?.() ?? new Date();
+  const summaries = await Promise.all(
+    sources.map((source): Promise<SourceRunSummary> => {
+      if (!options.force && !isDue(db, source, now)) {
+        return Promise.resolve({ source: source.id, status: "skipped", fetched: 0, inserted: 0, closed: 0, errors: [] });
+      }
+      return ingestSource(db, source, now);
+    }),
+  );
+  if (summaries.some((s) => s.status !== "skipped")) {
+    retireStaleJobs(db, now, options.staleAfterDays);
+    recomputeCanonical(db);
+    recomputeCompanyTiers(db);
+  }
+  return summaries;
 }

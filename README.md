@@ -1,83 +1,110 @@
 # job-radar
 
-Aggregates open job postings from public/free job-board APIs (Greenhouse, Lever,
-Remotive, Arbeitnow) into one filterable local dashboard, so you don't depend on
-paid job-aggregator products.
+Real, current job openings, pulled straight from employers' career pages and
+from public job boards, normalized into one searchable list. It's inspired by
+[Remotive](https://remotive.com) (its listing UX and normalized job metadata)
+and [NaGringa](https://www.nagringa.dev/vagas) (reading company career pages
+directly, auto-retiring filled jobs, and pay tiers). Unlike them, there's no
+paywall: every job links to the original posting.
 
-RemoteOK was deliberately left out: its API only ever returns links back to its
-own site, which obfuscates the real employer application link behind encoded
-JavaScript (their monetization model) instead of linking directly and freely to
-the employer, like every other source here does.
+## Why the jobs are "real and updated"
+
+| Problem with typical boards | What job-radar does |
+| --- | --- |
+| Stale listings that stay up for months | Each company's job board is read **in full**. A job that disappears from it is closed at the next run. Jobs from partially-read feeds are closed after `STALE_AFTER_DAYS` (default 30) without being seen, or at the source's expiry date. |
+| Reposts of reposts | Postings come from the employer's own ATS (Greenhouse, Lever, Ashby) first. When the same opening also appears on an aggregator, only the ATS copy is shown (see `recomputeCanonical`). |
+| "Remote" that isn't open to you | Locations are parsed into ISO country lists (regions like *EMEA* and *LATAM* are expanded). The **Your location** filter shows remote jobs open to that country, plus hybrid and on-site jobs located there. |
+| No salary info | Salaries come from structured fields (Ashby, Lever, Himalayas, Jobicy) or from pay-transparency text in descriptions ("base salary range is $150,000 – $190,000"). They're annualized to approximate USD for the min-salary filter. |
+| Can't tell good payers apart | **Company tier** (S ≥ $120k, A ≥ $90k, B ≥ $50k) is the median of the salaries each company *publishes*, never a guess. Companies with fewer than 2 salaries get no tier. |
+
+## Sources
+
+| Source | Kind | Scope | Cadence |
+| --- | --- | --- | --- |
+| Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts` | hourly |
+| Himalayas | Aggregator | Newest 500 remote jobs per run (the feed has 100k+) | hourly |
+| Jobicy | Aggregator | Up to 500 remote jobs | every 2h |
+| Arbeitnow | Aggregator | Full feed (Europe-heavy) | hourly |
+| Remotive | Aggregator | Public sample feed only (~15 jobs, delayed 24h) | every 6h, per its terms |
+
+Aggregator jobs link back to the aggregator's posting, as their API terms
+require. Remotive's free API is deliberately small; most volume comes from the
+ATS boards.
+
+**Adding a company:** find its careers URL (`boards.greenhouse.io/{token}`,
+`jobs.lever.co/{token}` or `jobs.ashbyhq.com/{token}`) and add
+`{ token, name }` to the matching list in `companies.ts`.
 
 ## Structure
 
-- `backend/` — Node.js + TypeScript + Express API, SQLite storage (`better-sqlite3`)
-- `frontend/` — React + TypeScript (Vite) dashboard
-
-## Shared contract
-
-### `Job` type (`backend/src/types/job.ts`)
-
-```ts
-interface Job {
-  id: string;            // internal id (source + externalId hash)
-  source: string;        // e.g. "greenhouse", "lever", "remotive", "arbeitnow"
-  externalId: string;    // id as given by the source
-  title: string;
-  company: string;
-  location: string | null;
-  remote: boolean;
-  allowedCountries: string[] | null; // ISO 3166-1 alpha-2 codes; null = no restriction detected
-  url: string;           // link to the original posting
-  description: string | null;
-  tags: string[];
-  postedAt: string | null;   // ISO date, if the source provides one
-  firstSeenAt: string;       // ISO date, when job-radar first ingested it
-}
+```
+backend/   Node 20+ · TypeScript · Express · SQLite (better-sqlite3)
+  src/sources/     one adapter per source (fetch + map only)
+  src/normalize/   category, seniority, employment type, salary, location, skills, dedup keys
+  src/ingestion/   pipeline (upsert/close/retire/dedup/tiers), scheduler, CLI
+  src/api/         GET /api/jobs, /api/jobs/:id, /api/stats
+frontend/  React 19 · TypeScript · Vite (no router/UI libraries)
 ```
 
-### Adapter contract (`backend/src/adapters/types.ts`)
-
-Every source adapter implements:
-
-```ts
-interface JobSourceAdapter {
-  source: string;
-  fetchJobs(): Promise<NewJob[]>; // NewJob = Job without id/firstSeenAt
-}
-```
-
-Adapters live in `backend/src/adapters/<source>.ts`, one file per source, and only
-fetch + normalize — they do not touch the database.
-
-### API (`backend/src/api`)
-
-`GET /api/jobs` — returns stored jobs, newest first.
-
-Query params (all optional):
-- `keyword` — matches title/company/description (case-insensitive substring)
-- `location` — case-insensitive substring match
-- `remoteOnly=true` — only remote jobs
-- `source` — filter to one source
-- `postedAfter` — ISO date, only jobs posted on/after this date
-- `baseCountries` — comma-separated ISO 3166-1 alpha-2 codes (e.g. `PT,BR`). Forces
-  `remote=1` and matches jobs whose `allowedCountries` is either `null` (no stated
-  restriction) or overlaps any of the given codes. Union semantics across codes:
-  a job restricted to `["PT"]` matches `baseCountries=PT,BR`.
-
-Location-restriction parsing (`backend/src/lib/locationRestriction.ts`) is
-best-effort free-text matching against a curated list of country/region names —
-it will not catch every phrasing, and defaults to "unrestricted" when nothing
-is recognized (a bias toward inclusion, not exclusion).
-
-Response shape:
-```json
-{ "jobs": Job[], "total": number }
-```
-
-## Dev
+## Running it
 
 ```bash
-cd backend && npm install && npm run dev   # http://localhost:3001
-cd frontend && npm install && npm run dev  # http://localhost:5173
+cd backend && npm install && npm run ingest -- --force   # first fill (~30s)
+npm run dev                                              # API on :3001, scheduler on
 ```
+
+```bash
+cd frontend && npm install && npm run dev                # UI on :5173, proxies /api
+```
+
+The API refreshes due sources on startup and every `SCHEDULER_TICK_MINUTES`
+(default 15), respecting each source's minimum interval. Other settings:
+`PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `SCHEDULER=off`, `CORS_ORIGIN`. For a
+production frontend build, set `VITE_API_URL` if the API isn't same-origin.
+
+`npm run ingest` runs only the sources that are due. Pass `--force` to ignore
+intervals, and source ids to limit the run (`npm run ingest -- --force lever`).
+
+## API
+
+`GET /api/jobs` returns one deduplicated copy per opening, newest first. All parameters are optional:
+
+| Param | Example | Notes |
+| --- | --- | --- |
+| `q` | `react senior` | every word must match title/company/skills/tags, spelling-insensitive (`frontend` = `Front-End`) |
+| `category` | `software-development,design` | ids from `/api/stats` |
+| `country` | `BR` | eligible to work from (see above) |
+| `workplace` | `remote,hybrid` | `remote` · `hybrid` · `onsite` |
+| `seniority` | `senior,lead` | `intern` · `junior` · `mid` · `senior` · `lead` · `executive` |
+| `type` | `full_time,contract` | employment type |
+| `skills` | `TypeScript,Go` | any of |
+| `tier` | `S,A` | company pay tier |
+| `minSalary` | `100000` | ≈ USD/year; jobs without a salary are excluded |
+| `postedWithin` | `7` | days |
+| `source`, `company` | `ashby`, `openai` | `source` shows that source's own copies (no dedup) |
+| `page`, `pageSize` | `2`, `20` | `pageSize` ≤ 50 |
+
+`GET /api/jobs/:id` returns the full job (plain-text description), plus
+`closedAt` and `alsoOn` (other sources listing the same opening).
+`GET /api/stats` returns totals, facet counts, the countries present, and each
+source's last run.
+
+## Checks
+
+```bash
+cd backend && npm run typecheck && npm test
+cd frontend && npm run lint && npm run typecheck && npm test && npm run build
+```
+
+## Known limitations
+
+- Classification (category, seniority, stack) is rule-based and English-first.
+  It's right for the large majority of postings, but not all. Seniority is left
+  empty rather than guessed.
+- Country detection knows the countries, regions and major cities listed in
+  `normalize/location.ts`. An unknown city on an on-site job means it won't
+  match a country filter.
+- Salary conversion uses static, approximate exchange rates and is only used
+  for filtering. Salaries are always displayed in the original currency.
+- Himalayas posts jobs faster than an hourly 500-job window can cover, so its
+  jobs are a sample, not the full feed.
