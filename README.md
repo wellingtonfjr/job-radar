@@ -25,6 +25,7 @@ split view whose selection is part of the URL (`?job=…`).
 | Source | Kind | Scope | Cadence |
 | --- | --- | --- | --- |
 | Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts` | hourly |
+| InHire | Employer ATS (Brazil) | Remote and hybrid roles of each company in `companies.ts` (one detail request per role) | every 6h |
 | Himalayas | Aggregator | Newest 500 remote jobs per run (the feed has 100k+) | hourly |
 | Jobicy | Aggregator | Up to 500 remote jobs | every 2h |
 | Arbeitnow | Aggregator | Full feed (Europe-heavy) | hourly |
@@ -67,8 +68,23 @@ applications only through Arbeitnow's own form. Those listings keep
 > Review their terms before deploying publicly.
 
 **Adding a company:** find its careers URL (`boards.greenhouse.io/{token}`,
-`jobs.lever.co/{token}` or `jobs.ashbyhq.com/{token}`) and add
-`{ token, name }` to the matching list in `companies.ts`.
+`jobs.lever.co/{token}`, `jobs.ashbyhq.com/{token}` or `{token}.inhire.app`)
+and add `{ token, name }` to the matching list in `companies.ts`. Only add
+the employer's own board: recruiting agencies and RPOs that post for other
+companies stay out. Removing a company closes its jobs on the next run.
+
+**Sources evaluated and left out** (2026-10): Gupy and Remotar (terms forbid
+aggregating or republishing their listings), Jobgether (reposts employer jobs
+behind sign-in and upsells), FlexJobs and Virtual Vocations (paywalled),
+Remote.co and Wellfound (their jobs come from employer ATSs, and they block
+automated access), Remote OK (hides the employer link), Upwork, Fiverr,
+Freelancer.com, PeoplePerHour and Contently (freelance marketplaces, not
+jobs), Working Nomads (small feed, mostly gig sign-ups).
+
+**Safeguards:** postings that are résumé pools ("Banco de Talentos", "Talent
+Pool", "General Application") are never listed. A board that suddenly lists
+under half of its open jobs is treated as a glitch, and nothing is closed
+that run.
 
 ## Structure
 
@@ -139,9 +155,10 @@ cd frontend && npm run lint && npm run typecheck && npm test && npm run build
 
 ## Known limitations
 
-- Classification (category, seniority, stack) is rule-based and English-first.
-  It's right for the large majority of postings, but not all. Seniority is left
-  empty rather than guessed.
+- Classification (category, seniority, stack) is rule-based, covering English
+  and Portuguese (plus some German), matched without accents. It's right for
+  the large majority of postings, but not all. Seniority is left empty rather
+  than guessed.
 - Country detection knows the countries, regions and major cities listed in
   `normalize/location.ts`. An unknown city on an on-site job means it won't
   match a country filter.

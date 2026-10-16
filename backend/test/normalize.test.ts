@@ -145,6 +145,16 @@ describe("htmlToText", () => {
     expect(htmlToText(html)).toBe("About\n\nWe build & ship.\n• React\n• Node");
   });
 
+  it("decodes accented-letter entities (Portuguese descriptions)", () => {
+    expect(htmlToText("<p>Voc&ecirc; vai atuar na Solu&ccedil;&atilde;o &Uacute;nica &agrave; dist&acirc;ncia &ndash; 1&ordm; lugar</p>")).toBe(
+      "Você vai atuar na Solução Única à distância – 1º lugar",
+    );
+  });
+
+  it("decodes arrows, spacing and Greek letters but leaves non-entities alone", () => {
+    expect(htmlToText("<p>A&emsp;&rarr; B &le; &beta;&sigma;&omega; &Delta; Q&A;</p>")).toBe("A → B ≤ βσω Δ Q&A;");
+  });
+
   it("decodes entity-encoded HTML", () => {
     expect(htmlToText("&lt;p&gt;Hello &amp;amp; welcome&lt;/p&gt;")).toBe("Hello & welcome");
   });

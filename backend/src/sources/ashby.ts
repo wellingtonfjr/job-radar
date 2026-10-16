@@ -78,5 +78,6 @@ export const ashbySource: SourceAdapter = {
   kind: "ats",
   homepage: "https://www.ashbyhq.com",
   minIntervalMinutes: 60,
+  feeds: ASHBY_BOARDS.map((b) => b.token),
   fetchJobs: () => fetchBoards(ASHBY_BOARDS, fetchBoard),
 };

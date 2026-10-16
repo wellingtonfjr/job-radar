@@ -1,6 +1,6 @@
 import type { Db } from "../db/index.js";
 import type { NormalizedJob } from "../domain/job.js";
-import { companyKey, normalizeJob } from "../normalize/index.js";
+import { companyKey, isOpening, normalizeJob } from "../normalize/index.js";
 import { toSearchKey } from "../normalize/text.js";
 import { errorMessage } from "../sources/http.js";
 import type { FeedError, SourceAdapter } from "../sources/types.js";
@@ -22,6 +22,9 @@ export interface IngestionOptions {
 }
 
 const SOURCE_RANK = { ats: 0, aggregator: 1 } as const;
+
+const DROP_GUARD_RATIO = 0.5;
+const MIN_FEED_FOR_DROP_GUARD = 10;
 
 // `first_seen_at` is only written on INSERT; re-seeing a job refreshes
 // everything else, bumps `last_seen_at` and re-opens it if it was closed.
@@ -124,6 +127,7 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
 
     const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");
     const upsert = db.prepare(UPSERT_SQL);
+    const openInFeed = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE source = ? AND feed = ? AND closed_at IS NULL");
     // Anything in a complete feed that this run didn't touch is gone upstream.
     const closeMissing = db.prepare(
       "UPDATE jobs SET closed_at = @now WHERE source = @source AND feed = @feed AND closed_at IS NULL AND last_seen_at < @seenAt",
@@ -134,7 +138,8 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       for (const raw of result.jobs) {
         try {
           const job = normalizeJob(source.id, result.feed, raw);
-          if (job.title && job.url) seen.set(job.id, job);
+          // Résumé pools are skipped (and closed, if stored before).
+          if (job.title && job.url && isOpening(job.title)) seen.set(job.id, job);
         } catch (err) {
           summary.errors.push({ feed: result.feed, error: `normalize ${raw.externalId}: ${errorMessage(err)}` });
         }
@@ -146,10 +151,25 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
           upsert.run(toRow(job, SOURCE_RANK[source.kind], startedAt));
         }
         if (result.complete) {
-          summary.closed += closeMissing.run({ now: startedAt, source: source.id, feed: result.feed, seenAt: startedAt }).changes;
+          // Guard against partial responses: a "complete" board that suddenly
+          // lists under half of what was open is more likely an upstream
+          // glitch than mass hiring, so nothing is closed this run.
+          const open = (openInFeed.get(source.id, result.feed) as { n: number }).n;
+          if (open >= MIN_FEED_FOR_DROP_GUARD && seen.size < open * DROP_GUARD_RATIO) {
+            summary.errors.push({ feed: result.feed, error: `listed ${seen.size} of ${open} open jobs; not closing any this run` });
+          } else {
+            summary.closed += closeMissing.run({ now: startedAt, source: source.id, feed: result.feed, seenAt: startedAt }).changes;
+          }
         }
       })();
       summary.fetched += seen.size;
+    }
+
+    if (source.feeds && outcome.results.length > 0) {
+      const placeholders = source.feeds.map(() => "?").join(", ") || "NULL";
+      summary.closed += db
+        .prepare(`UPDATE jobs SET closed_at = ? WHERE source = ? AND closed_at IS NULL AND feed NOT IN (${placeholders})`)
+        .run(startedAt, source.id, ...source.feeds).changes;
     }
 
     if (summary.errors.length > 0) summary.status = outcome.results.length > 0 ? "partial" : "error";
@@ -175,16 +195,25 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
 /**
  * Retires jobs we can no longer vouch for: past their source-given expiry,
  * or (for feeds that are only partially read) not seen for `staleAfterDays`.
+ * Résumé pools stored before they were filtered out are retired too (they
+ * may sit in a partially-read feed where absence never closes them).
  */
 export function retireStaleJobs(db: Db, now: Date, staleAfterDays: number): number {
   const nowIso = now.toISOString();
   const staleBefore = new Date(now.getTime() - staleAfterDays * 86_400_000).toISOString();
-  return db
+  const expired = db
     .prepare(
       `UPDATE jobs SET closed_at = @now
        WHERE closed_at IS NULL AND ((expires_at IS NOT NULL AND expires_at < @now) OR last_seen_at < @staleBefore)`,
     )
     .run({ now: nowIso, staleBefore }).changes;
+
+  const update = db.prepare("UPDATE jobs SET closed_at = ? WHERE id = ?");
+  const pools = (db.prepare("SELECT id, title FROM jobs WHERE closed_at IS NULL").all() as { id: string; title: string }[]).filter(
+    (j) => !isOpening(j.title),
+  );
+  db.transaction(() => pools.forEach((j) => update.run(nowIso, j.id)))();
+  return expired + pools.length;
 }
 
 /**

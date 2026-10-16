@@ -37,5 +37,11 @@ export interface SourceAdapter {
   homepage: string;
   /** Minimum minutes between fetches, respecting each provider's terms. */
   minIntervalMinutes: number;
+  /**
+   * For per-company boards: every feed (board token) the source covers.
+   * Jobs from a feed no longer listed — a company removed from curation —
+   * are closed instead of lingering until they go stale.
+   */
+  feeds?: readonly string[];
   fetchJobs(): Promise<FetchOutcome>;
 }

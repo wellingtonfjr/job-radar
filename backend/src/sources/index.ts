@@ -2,6 +2,7 @@ import { arbeitnowSource } from "./arbeitnow.js";
 import { ashbySource } from "./ashby.js";
 import { greenhouseSource } from "./greenhouse.js";
 import { himalayasSource } from "./himalayas.js";
+import { inhireSource } from "./inhire.js";
 import { jobicySource } from "./jobicy.js";
 import { leverSource } from "./lever.js";
 import { remotiveSource } from "./remotive.js";
@@ -12,6 +13,7 @@ export const SOURCES: SourceAdapter[] = [
   greenhouseSource,
   leverSource,
   ashbySource,
+  inhireSource,
   himalayasSource,
   jobicySource,
   arbeitnowSource,

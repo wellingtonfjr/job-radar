@@ -22,6 +22,7 @@ const POSTING_PATTERNS: RegExp[] = [
   /^https:\/\/[\w-]+\.breezy\.hr\/p\/[\w-]+/i,
   /^https:\/\/join\.com\/companies\/[\w-]+\/\d+/i,
   /^https:\/\/(careers-)?[\w-]+\.icims\.com\/jobs\/\d+/i,
+  /^https:\/\/[\w-]+\.inhire\.app\/vagas\/[0-9a-f-]{36}/i,
 ];
 
 const TRACKING_PARAM = /^(utm_[a-z]+|ref|referrer|source|src|gh_src|lever-source|lever-origin|fbclid|gclid)$/i;

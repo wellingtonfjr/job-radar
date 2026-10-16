@@ -1,10 +1,11 @@
 import { companyKey } from "../normalize/index.js";
+import { cleanInhireTitle, inhireJobUrl } from "../sources/inhire.js";
 import type { ResolverNet } from "./net.js";
 import { cleanUrl } from "./postingUrls.js";
 
 /**
- * Finds a company's public ATS board by trying the board names it most
- * likely uses ("Lemon.io" → "lemonio", "lemon-io", "lemon") on each
+ * Finds a company's public ATS board (Greenhouse, Lever, Ashby, Workable,
+ * InHire, Recruitee) by trying the board names it most likely uses ("Lemon.io" → "lemonio", "lemon-io", "lemon") on each
  * provider's public job-board API.
  */
 export interface BoardJob {
@@ -68,6 +69,23 @@ const PROVIDERS: Provider[] = [
       );
       if (!data?.jobs?.length) return null;
       return { provider: "workable", token, companyName: data.name ?? null, jobs: data.jobs.map((j) => ({ title: j.title, url: j.url })) };
+    },
+  },
+  {
+    id: "inhire",
+    async load(net, token) {
+      const data = await net.json<{ tenantName?: string; jobsPage?: { jobId: string; displayName: string; status?: string }[] }>(
+        "https://api.inhire.app/job-posts/public/pages",
+        { "X-Tenant": token },
+      );
+      const jobs = (data?.jobsPage ?? []).filter((j) => (j.status ?? "published") === "published");
+      if (jobs.length === 0) return null;
+      return {
+        provider: "inhire",
+        token,
+        companyName: data?.tenantName?.trim() ?? null,
+        jobs: jobs.map((j) => ({ title: cleanInhireTitle(j.displayName), url: inhireJobUrl(token, j.jobId, j.displayName) })),
+      };
     },
   },
   {

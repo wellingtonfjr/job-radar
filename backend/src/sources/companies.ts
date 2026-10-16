@@ -9,6 +9,7 @@
  *   - Greenhouse: boards.greenhouse.io/{token} or job-boards.greenhouse.io/{token}
  *   - Lever:      jobs.lever.co/{token}
  *   - Ashby:      jobs.ashbyhq.com/{token}
+ *   - InHire:     {token}.inhire.app (Brazilian ATS)
  * and add `{ token, name }` to the matching list.
  */
 export interface CompanyBoard {
@@ -77,4 +78,41 @@ export const ASHBY_BOARDS: CompanyBoard[] = [
   { token: "vanta", name: "Vanta" },
   { token: "sentry", name: "Sentry" },
   { token: "1password", name: "1Password" },
+];
+
+/**
+ * Brazilian employers on InHire with remote or hybrid roles (verified
+ * 2026-10-16). Recruiting agencies / RPOs that post on behalf of other
+ * companies are left out on purpose: only the employer's own postings.
+ * V4 Company is left out too: its board returns a different subset of
+ * ~1000 near-identical franchise postings on every request.
+ */
+export const INHIRE_BOARDS: CompanyBoard[] = [
+  { token: "vitru", name: "Vitru Educação" },
+  { token: "deloitte", name: "Deloitte" },
+  { token: "brivia", name: "Brivia" },
+  { token: "magazineluiza", name: "Magazine Luiza" },
+  { token: "premiersoft", name: "Premiersoft" },
+  { token: "mazzatech", name: "Mazzatech" },
+  { token: "riachuelo", name: "Riachuelo" },
+  { token: "lwsa", name: "LWSA" },
+  { token: "iconit", name: "ICON Solutions do Brasil" },
+  { token: "nstech", name: "NSTECH" },
+  { token: "indicium", name: "Indicium" },
+  { token: "jump", name: "Jump" },
+  { token: "interop", name: "InterOp" },
+  { token: "dbservices", name: "DBServices" },
+  { token: "nomadglobal", name: "Nomad" },
+  { token: "brq", name: "BRQ" },
+  { token: "skopiadigital", name: "Skopia Digital" },
+  { token: "vr", name: "VR" },
+  { token: "projectivaholding", name: "Projectiva Holding" },
+  { token: "contaazul", name: "Conta Azul" },
+  { token: "radix", name: "Radix" },
+  { token: "qive", name: "Qive" },
+  { token: "solutis", name: "Solutis" },
+  { token: "frameworkdigital", name: "Framework" },
+  { token: "loglabdigital", name: "Loglab Digital" },
+  { token: "alun", name: "FIAP / Alura / PM3" },
+  { token: "solfacil", name: "Solfácil" },
 ];

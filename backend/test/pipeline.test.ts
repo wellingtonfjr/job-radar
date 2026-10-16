@@ -34,6 +34,42 @@ describe("runIngestion", () => {
     expect(firstSeen.first_seen_at).toBe(T0.toISOString());
   });
 
+  it("doesn't trust a complete feed that suddenly lists under half of its open jobs", async () => {
+    const ats = fakeSource("ats");
+    const jobs = Array.from({ length: 20 }, (_, i) => rawJob({ externalId: String(i), title: `Role ${i}` }));
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs }], errors: [] });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: jobs.slice(0, 6) }], errors: [] });
+    const [glitch] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(glitch).toMatchObject({ status: "partial", closed: 0 });
+    expect(glitch?.errors[0]?.error).toMatch(/listed 6 of 20/);
+    expect(openIds(db)).toHaveLength(20);
+
+    // A normal-sized drop is real and gets applied.
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: jobs.slice(0, 15) }], errors: [] });
+    const [real] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(4) });
+    expect(real).toMatchObject({ status: "ok", closed: 5 });
+  });
+
+  it("closes jobs of a company removed from a board source's list", async () => {
+    const ats = fakeSource("ats");
+    ats.respond({
+      results: [
+        { feed: "acme", complete: true, jobs: [rawJob({ externalId: "1" })] },
+        { feed: "globex", complete: true, jobs: [rawJob({ externalId: "2", company: "Globex" })] },
+      ],
+      errors: [],
+    });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+
+    ats.feeds = ["acme"];
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1" })] }], errors: [] });
+    const [summary] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(summary?.closed).toBe(1);
+    expect(openIds(db)).toEqual(["ats:1"]);
+  });
+
   it("never closes jobs of a feed that failed or was only partially read", async () => {
     const ats = fakeSource("ats");
     ats.respond({
@@ -66,6 +102,20 @@ describe("runIngestion", () => {
     expect(openIds(db)).toEqual(["agg:old"]);
 
     await runIngestion(db, [agg], { staleAfterDays: 30, now: () => hoursLater(31 * 24) });
+    expect(openIds(db)).toEqual([]);
+  });
+
+  it("never lists résumé pools, and retires ones stored earlier", async () => {
+    const agg = fakeSource("agg", "aggregator");
+    agg.respond({ results: [{ feed: "all", complete: false, jobs: [rawJob({ externalId: "1" }), rawJob({ externalId: "2", title: "Banco de Talentos - Tecnologia" })] }], errors: [] });
+    await runIngestion(db, [agg], { staleAfterDays: 30, now: () => T0 });
+    expect(openIds(db)).toEqual(["agg:1"]);
+
+    // A pool stored by an older version of the pipeline, in a partially-read
+    // feed that no longer returns it, still gets retired.
+    db.exec("UPDATE jobs SET title = 'Talent Pool - Engineering' WHERE id = 'agg:1'");
+    agg.respond({ results: [{ feed: "all", complete: false, jobs: [] }], errors: [] });
+    await runIngestion(db, [agg], { staleAfterDays: 30, now: () => hoursLater(2), force: true });
     expect(openIds(db)).toEqual([]);
   });
 

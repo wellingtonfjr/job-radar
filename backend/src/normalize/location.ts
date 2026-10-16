@@ -196,6 +196,16 @@ const CITY_ALIASES: Record<string, string> = {
   AUCKLAND: "NZ",
   "SAO PAULO": "BR",
   "SÃO PAULO": "BR",
+  "RIO DE JANEIRO": "BR",
+  "BELO HORIZONTE": "BR",
+  "CURITIBA": "BR",
+  "PORTO ALEGRE": "BR",
+  "FLORIANOPOLIS": "BR",
+  "FLORIANÓPOLIS": "BR",
+  "RECIFE": "BR",
+  "BRASILIA": "BR",
+  "BRASÍLIA": "BR",
+  "CAMPINAS": "BR",
   "MEXICO CITY": "MX",
   "BUENOS AIRES": "AR",
   BOGOTA: "CO",
@@ -258,8 +268,9 @@ const REGION_ALIASES: Record<string, string[]> = {
 };
 
 const UNRESTRICTED_PATTERN = /\b(WORLDWIDE|ANYWHERE|GLOBAL|GLOBALLY|INTERNATIONAL|NO RESTRICTIONS?|ANY LOCATION|EVERYWHERE)\b/;
-const REMOTE_PATTERN = /\b(remote|anywhere|worldwide|work from home|wfh|distributed|home[- ]based|telecommute)\b/i;
-const HYBRID_PATTERN = /\bhybrid\b/i;
+// English plus Portuguese/Spanish ("remoto", "home office", "teletrabalho", "híbrido").
+const REMOTE_PATTERN = /\b(remote|anywhere|worldwide|work from home|wfh|distributed|home[- ]based|telecommute|remoto|home office|teletrabalho)\b/i;
+const HYBRID_PATTERN = /\b(hybrid|h[íi]brido)\b/i;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -298,9 +309,13 @@ function countriesIn(raw: string): Set<string> {
     const code = CITY_ALIASES[m[1] as string];
     if (code) found.add(code);
   }
-  // "Austin, TX" — only trusted when the original string uses that format.
-  for (const m of raw.matchAll(STATE_SUFFIX)) {
-    if (US_STATE_CODES.has(m[1] as string)) found.add("US");
+  // "Austin, TX" — only trusted when the original string uses that format
+  // and names no other country: Brazilian state codes collide with US ones
+  // ("Joinville, SC, Brazil", "Belém, PA, Brazil").
+  if (found.size === 0) {
+    for (const m of raw.matchAll(STATE_SUFFIX)) {
+      if (US_STATE_CODES.has(m[1] as string)) found.add("US");
+    }
   }
   return found;
 }

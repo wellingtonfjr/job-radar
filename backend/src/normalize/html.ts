@@ -29,7 +29,71 @@ const NAMED_ENTITIES: Record<string, string> = {
   copy: "©",
   reg: "®",
   trade: "™",
+  ordm: "º",
+  ordf: "ª",
+  deg: "°",
+  laquo: "«",
+  raquo: "»",
+  iexcl: "¡",
+  iquest: "¿",
+  szlig: "ß",
+  aelig: "æ",
+  AElig: "Æ",
+  oslash: "ø",
+  Oslash: "Ø",
+  times: "×",
+  sup2: "²",
+  sup3: "³",
+  frac12: "½",
+  shy: "",
+  zwj: "",
+  zwnj: "",
+  ensp: " ",
+  emsp: " ",
+  thinsp: " ",
+  acute: "´",
+  rarr: "→",
+  larr: "←",
+  harr: "↔",
+  uarr: "↑",
+  darr: "↓",
+  rArr: "⇒",
+  le: "≤",
+  ge: "≥",
+  ne: "≠",
+  plusmn: "±",
+  divide: "÷",
+  check: "✓",
+  hearts: "♥",
+  star: "☆",
 };
+
+// Greek letters (&alpha; … &Omega;), common in data/science postings.
+const GREEK = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega".split(" ");
+GREEK.forEach((name, i) => {
+  const lower = String.fromCodePoint(0x3b1 + i + (i >= 17 ? 1 : 0)); // skip final sigma (ς)
+  NAMED_ENTITIES[name] = lower;
+  NAMED_ENTITIES[name[0]!.toUpperCase() + name.slice(1)] = lower.toUpperCase();
+});
+
+// Accented letters (&eacute; &atilde; &ccedil; &Ecirc; …), generated rather
+// than listed: Portuguese/Spanish/French job descriptions use all of them.
+const DIACRITICS: Record<string, string> = {
+  acute: "\u0301",
+  grave: "\u0300",
+  circ: "\u0302",
+  tilde: "\u0303",
+  uml: "\u0308",
+  ring: "\u030a",
+  cedil: "\u0327",
+};
+for (const letter of "aeiouyncAEIOUYNC") {
+  for (const [suffix, mark] of Object.entries(DIACRITICS)) {
+    const composed = `${letter}${mark}`.normalize("NFC");
+    // Only real precomposed letters (e.g. "ç", not "c" + loose mark).
+    if (composed.length === 1) NAMED_ENTITIES[`${letter}${suffix}`] = composed;
+  }
+}
 
 export function decodeEntities(input: string): string {
   return input.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, entity: string) => {
@@ -40,7 +104,9 @@ export function decodeEntities(input: string): string {
           : Number.parseInt(entity.slice(1), 10);
       return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
     }
-    return NAMED_ENTITIES[entity.toLowerCase()] ?? match;
+    // Entity names are case-sensitive (&Eacute; ≠ &eacute;); fall back to
+    // lowercase for sloppy markup like &NBSP;.
+    return NAMED_ENTITIES[entity] ?? NAMED_ENTITIES[entity.toLowerCase()] ?? match;
   });
 }
 

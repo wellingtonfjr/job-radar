@@ -16,7 +16,7 @@ export function SourcesFooter({ sources }: SourcesFooterProps) {
         <div className="footer__about">
           <p className="footer__brand">job-radar</p>
           <p>
-            Company career pages (Greenhouse, Lever and Ashby boards) are scanned directly, so a role disappears as soon as the company
+            Company career pages (Greenhouse, Lever, Ashby and InHire boards) are scanned directly, so a role disappears as soon as the company
             takes it down. Public job boards fill the gaps and always link back to the original posting.
           </p>
         </div>

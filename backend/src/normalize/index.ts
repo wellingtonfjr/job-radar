@@ -36,6 +36,16 @@ export function fingerprint(company: string, title: string): string {
   return `${c}|${t}`;
 }
 
+/**
+ * Résumé pools ("Banco de Talentos", "Talent Pool", "General Application")
+ * aren't openings, so they are never listed.
+ */
+const NOT_AN_OPENING = /\b(banco de talentos|talent (?:pool|community|network)|general application|open application|candidatura espont[aâ]nea|spontaneous application)\b/i;
+
+export function isOpening(title: string): boolean {
+  return !NOT_AN_OPENING.test(title);
+}
+
 function cleanLabel(value: string): string {
   return decodeEntities(value).replace(/\s+/g, " ").trim();
 }

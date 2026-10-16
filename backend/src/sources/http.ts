@@ -18,11 +18,14 @@ export class HttpError extends Error {
  * 4xx responses are not retried: they mean the board doesn't exist or the
  * request is wrong, and retrying only adds load on the provider.
  */
-export async function getJson<T>(url: string, { timeoutMs = DEFAULT_TIMEOUT_MS, retries = 1 } = {}): Promise<T> {
+export async function getJson<T>(
+  url: string,
+  { timeoutMs = DEFAULT_TIMEOUT_MS, retries = 1, headers = {} as Record<string, string> } = {},
+): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       const res = await fetch(url, {
-        headers: { "User-Agent": USER_AGENT, Accept: "application/json" },
+        headers: { "User-Agent": USER_AGENT, Accept: "application/json", ...headers },
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (!res.ok) throw new HttpError(url, res.status);

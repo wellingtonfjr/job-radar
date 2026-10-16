@@ -46,5 +46,6 @@ export const greenhouseSource: SourceAdapter = {
   kind: "ats",
   homepage: "https://www.greenhouse.com",
   minIntervalMinutes: 60,
+  feeds: GREENHOUSE_BOARDS.map((b) => b.token),
   fetchJobs: () => fetchBoards(GREENHOUSE_BOARDS, fetchBoard),
 };
