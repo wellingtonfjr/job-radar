@@ -785,6 +785,54 @@ input {
   align-items: center;
   gap: 10px 16px;
 }
+.apply-notes {
+  display: grid;
+  gap: 2px;
+}
+.apply-note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.apply-note .num {
+  color: var(--ink-2);
+}
+.apply-note--board {
+  color: var(--money-ink);
+}
+.via {
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+.switch {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+}
+.switch:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.switch input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+.switch__text {
+  display: grid;
+  font-size: 0.8125rem;
+}
+.switch__text span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
 .verified {
   display: inline-flex;
   align-items: center;

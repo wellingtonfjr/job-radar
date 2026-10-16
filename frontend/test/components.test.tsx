@@ -3,9 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ActiveFilters } from '../src/components/ActiveFilters';
 import { FilterPanel } from '../src/components/FilterPanel';
+import { JobDetailView } from '../src/components/JobDetailView';
 import { JobRow } from '../src/components/JobRow';
 import { EMPTY_FILTERS } from '../src/lib/filters';
-import { makeJob, stats } from './fixtures';
+import { makeDetail, makeJob, stats } from './fixtures';
 
 describe('JobRow', () => {
   it('links to the detail page and shows the normalized facts', () => {
@@ -97,5 +98,48 @@ describe('ActiveFilters', () => {
   it('renders nothing without filters', () => {
     const { container } = render(<ActiveFilters filters={EMPTY_FILTERS} stats={stats} onChange={vi.fn()} />);
     expect(container).toBeEmptyDOMElement();
+  });
+});
+
+describe('apply links', () => {
+  it('links straight to the employer and credits the job board', () => {
+    const job = makeDetail({
+      source: 'remotive',
+      sourceName: 'Remotive',
+      url: 'https://remotive.com/remote-jobs/x-1',
+      applyUrl: 'https://jobs.lever.co/acme/1',
+      applyDirect: true,
+      applyMethod: 'ats-discovery',
+    });
+    render(<JobDetailView job={job} stats={stats} variant="page" />);
+    expect(screen.getByRole('link', { name: /Apply on employer site/ })).toHaveAttribute('href', 'https://jobs.lever.co/acme/1');
+    expect(screen.getByText('jobs.lever.co')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Remotive' })).toHaveAttribute('href', 'https://remotive.com/remote-jobs/x-1');
+  });
+
+  it('says so when only the job board can take the application', () => {
+    const job = makeDetail({
+      source: 'jobicy',
+      sourceName: 'Jobicy',
+      url: 'https://jobicy.com/jobs/1',
+      applyUrl: 'https://jobicy.com/jobs/1',
+      applyDirect: false,
+      applyMethod: null,
+    });
+    render(<JobDetailView job={job} stats={stats} variant="page" />);
+    expect(screen.getByRole('link', { name: /Apply on Jobicy/ })).toHaveAttribute('href', 'https://jobicy.com/jobs/1');
+    expect(screen.getByText(/couldn't verify the employer's own posting/)).toBeInTheDocument();
+  });
+
+  it('marks board-only cards with where the click goes', () => {
+    render(<JobRow job={makeJob({ applyDirect: false, sourceName: 'Himalayas' })} categoryName="x" isNew={false} />);
+    expect(screen.getByText('via Himalayas')).toBeInTheDocument();
+  });
+
+  it('offers an employer-posting-only filter', async () => {
+    const onChange = vi.fn();
+    render(<FilterPanel filters={EMPTY_FILTERS} stats={stats} onChange={onChange} />);
+    await userEvent.click(screen.getByRole('checkbox', { name: /Employer's own posting only/ }));
+    expect(onChange).toHaveBeenCalledWith({ ...EMPTY_FILTERS, direct: true });
   });
 });

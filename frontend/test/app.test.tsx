@@ -66,7 +66,7 @@ describe('App', () => {
     await userEvent.click(await screen.findByRole('link', { name: 'Senior Frontend Engineer' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Senior Frontend Engineer' })).toBeInTheDocument();
     expect(screen.getByText('We build things.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Apply on company site/ })).toHaveAttribute('href', 'https://example.com/jobs/1');
+    expect(screen.getByRole('link', { name: /Apply on employer site/ })).toHaveAttribute('href', 'https://example.com/jobs/1');
 
     await userEvent.click(screen.getByRole('link', { name: /All roles/ }));
     expect(await screen.findByText('Product Designer')).toBeInTheDocument();

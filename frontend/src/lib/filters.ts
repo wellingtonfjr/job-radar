@@ -15,6 +15,8 @@ export interface Filters {
   tier: PayTier[];
   minSalary: number | null;
   postedWithin: number | null;
+  /** Only roles whose Apply goes to the employer's own posting. */
+  direct: boolean;
 }
 
 export const EMPTY_FILTERS: Filters = {
@@ -28,6 +30,7 @@ export const EMPTY_FILTERS: Filters = {
   tier: [],
   minSalary: null,
   postedWithin: null,
+  direct: false,
 };
 
 const WORKPLACES: readonly Workplace[] = ['remote', 'hybrid', 'onsite'];
@@ -66,6 +69,7 @@ export function parseFilters(search: string): Filters {
     tier: oneOf(list(params, 'tier'), TIERS),
     minSalary: positiveInt(params.get('minSalary')),
     postedWithin: positiveInt(params.get('postedWithin')),
+    direct: params.get('direct') === 'true',
   };
 }
 
@@ -84,6 +88,7 @@ export function serializeFilters(filters: Filters): string {
   if (filters.country) params.set('country', filters.country);
   if (filters.minSalary) params.set('minSalary', String(filters.minSalary));
   if (filters.postedWithin) params.set('postedWithin', String(filters.postedWithin));
+  if (filters.direct) params.set('direct', 'true');
   return params.toString();
 }
 
@@ -98,7 +103,8 @@ export function countActiveFilters(filters: Filters): number {
     filters.tier.length +
     (filters.country ? 1 : 0) +
     (filters.minSalary ? 1 : 0) +
-    (filters.postedWithin ? 1 : 0)
+    (filters.postedWithin ? 1 : 0) +
+    (filters.direct ? 1 : 0)
   );
 }
 

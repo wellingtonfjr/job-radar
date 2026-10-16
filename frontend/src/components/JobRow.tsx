@@ -76,6 +76,11 @@ export function JobRow({ job, categoryName, isNew, selected = false, onSelect, o
       <div className="job-card__meta">
         {isNew && <span className="new-flag">New</span>}
         {age && <span className="age">{age.replace(' ago', '')}</span>}
+        {!job.applyDirect && (
+          <span className="via" title={`No employer posting found yet; applying goes through ${job.sourceName}`}>
+            via {job.sourceName}
+          </span>
+        )}
       </div>
     </article>
   );

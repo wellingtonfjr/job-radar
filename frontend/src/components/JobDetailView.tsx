@@ -14,7 +14,21 @@ interface JobDetailViewProps {
   onClose?: () => void;
 }
 
-const ATS_SOURCES = new Set(['greenhouse', 'lever', 'ashby']);
+const METHOD_NOTES: Record<NonNullable<JobDetail['applyMethod']>, string> = {
+  source: "the company's own job board",
+  'ats-match': "the company's own job board",
+  description: 'the employer link in the posting',
+  'listing-page': "the job board's link to the employer",
+  'ats-discovery': "the company's own job board",
+};
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
 
 function eligibility(job: JobDetail): string | null {
   if (job.allowedCountries === null) return job.workplace === 'remote' ? 'Anywhere (no restriction found)' : null;
@@ -37,7 +51,7 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
   const categoryName = stats?.categories.find((c) => c.id === job.category)?.name ?? job.category;
   const salary = formatSalary(job.salary);
   const posted = formatDate(job.postedAt) ?? formatDate(job.firstSeenAt);
-  const fromAts = ATS_SOURCES.has(job.source);
+  const fromBoard = job.applyMethod !== 'source';
 
   const facts: [string, string | null][] = [
     ['Salary', salary],
@@ -83,15 +97,36 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
 
       <div className="job-detail__apply">
         {!job.closedAt && (
-          <a className="button button--primary" href={job.url} target="_blank" rel="noopener noreferrer">
-            {fromAts ? 'Apply on company site' : `Apply via ${job.sourceName}`}
+          <a className="button button--primary" href={job.applyUrl} target="_blank" rel="noopener noreferrer">
+            {job.applyDirect ? 'Apply on employer site' : `Apply on ${job.sourceName}`}
             <Icon name="external" size={16} />
           </a>
         )}
-        <p className="verified">
-          <span className="live__dot" aria-hidden="true" />
-          Verified open {formatRelative(job.lastSeenAt)} · {fromAts ? `${job.sourceName} (company ATS)` : job.sourceName}
-        </p>
+        <div className="apply-notes">
+          <p className="verified">
+            <span className="live__dot" aria-hidden="true" />
+            Verified open {formatRelative(job.lastSeenAt)}
+          </p>
+          {job.applyDirect ? (
+            <p className="apply-note">
+              Goes to <span className="num">{hostOf(job.applyUrl)}</span>, found via {METHOD_NOTES[job.applyMethod ?? 'source']}.
+              {fromBoard && (
+                <>
+                  {' '}
+                  Listed on{' '}
+                  <a href={job.url} target="_blank" rel="noopener noreferrer">
+                    {job.sourceName}
+                  </a>
+                  .
+                </>
+              )}
+            </p>
+          ) : (
+            <p className="apply-note apply-note--board">
+              We couldn't verify the employer's own posting yet, so applying goes through {job.sourceName}.
+            </p>
+          )}
+        </div>
       </div>
 
       <dl className="facts">

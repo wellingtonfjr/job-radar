@@ -22,7 +22,11 @@ export interface Job {
   company: string;
   companyLogo: string | null;
   companyTier: PayTier | null;
+  /** The source listing. */
   url: string;
+  /** Where "Apply" goes: the employer's own posting when known, else `url`. */
+  applyUrl: string;
+  applyDirect: boolean;
   locations: string[];
   workplace: Workplace;
   allowedCountries: string[] | null;
@@ -42,6 +46,8 @@ export interface Job {
 export interface JobDetail extends Job {
   description: string | null;
   closedAt: string | null;
+  /** How the direct link was found ("source" = the job came from the employer's ATS). */
+  applyMethod: 'source' | 'ats-match' | 'description' | 'listing-page' | 'ats-discovery' | null;
   alsoOn: { source: string; sourceName: string; url: string }[];
 }
 

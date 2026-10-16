@@ -1,12 +1,8 @@
 import type Database from "better-sqlite3";
 
-const SCHEMA_VERSION = 1;
-
-export function migrate(db: Database.Database): void {
-  const version = db.pragma("user_version", { simple: true }) as number;
-  if (version >= SCHEMA_VERSION) return;
-
-  db.exec(`
+/** Ordered migrations; `user_version` records how many have been applied. */
+const MIGRATIONS: ((db: Database.Database) => void)[] = [
+  (db) => db.exec(`
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY,
       source TEXT NOT NULL,
@@ -70,6 +66,33 @@ export function migrate(db: Database.Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_source_runs_source ON source_runs(source, started_at);
-  `);
-  db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  `),
+
+  // Direct employer links for jobs that came from job boards (see resolve/).
+  (db) => db.exec(`
+    -- Job-posting links found in the source's description HTML.
+    ALTER TABLE jobs ADD COLUMN description_links TEXT NOT NULL DEFAULT '[]';
+    -- The employer's own posting, when it could be verified.
+    ALTER TABLE jobs ADD COLUMN apply_url TEXT;
+    ALTER TABLE jobs ADD COLUMN apply_method TEXT;
+    ALTER TABLE jobs ADD COLUMN apply_checked_at TEXT;
+
+    -- Cache of "does this company have a public ATS board, and where".
+    CREATE TABLE IF NOT EXISTS ats_boards (
+      company_key TEXT PRIMARY KEY,
+      provider TEXT,
+      token TEXT,
+      checked_at TEXT NOT NULL
+    );
+  `),
+];
+
+export function migrate(db: Database.Database): void {
+  const version = db.pragma("user_version", { simple: true }) as number;
+  for (let i = version; i < MIGRATIONS.length; i++) {
+    db.transaction(() => {
+      (MIGRATIONS[i] as (db: Database.Database) => void)(db);
+      db.pragma(`user_version = ${i + 1}`);
+    })();
+  }
 }

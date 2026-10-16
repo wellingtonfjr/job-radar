@@ -49,6 +49,8 @@ const querySchema = z.object({
   postedWithin: z.coerce.number().int().min(1).max(365).optional(),
   source: z.string().trim().min(1).optional(),
   company: z.string().trim().min(1).max(100).optional(),
+  /** Only jobs whose Apply goes to the employer's own posting. */
+  direct: z.enum(["true", "false"]).optional().transform((v) => v === "true"),
   page: z.coerce.number().int().min(1).max(1000).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
 });
@@ -82,6 +84,8 @@ interface JobRow {
   first_seen_at: string;
   last_seen_at: string;
   tier: PayTier | null;
+  source_rank: number;
+  apply_url: string | null;
 }
 
 function parseJsonArray(value: string | null): string[] {
@@ -105,6 +109,9 @@ function rowToJob(row: JobRow): Job {
     companyLogo: row.company_logo,
     companyTier: row.tier,
     url: row.url,
+    // ATS postings are the employer's own; board listings only when resolved.
+    applyUrl: row.apply_url ?? row.url,
+    applyDirect: row.source_rank === 0 || row.apply_url !== null,
     locations: parseJsonArray(row.locations),
     workplace: row.workplace,
     allowedCountries: row.allowed_countries ? parseJsonArray(row.allowed_countries) : null,
@@ -142,7 +149,7 @@ const LIST_COLUMNS = `
   j.id, j.source, j.external_id, j.title, j.company, j.company_logo, j.url, j.locations, j.workplace,
   j.allowed_countries, j.category, j.seniority, j.employment_type, j.salary_min, j.salary_max,
   j.salary_currency, j.salary_period, j.salary_min_usd_year, j.skills, j.tags, j.posted_at, j.expires_at,
-  j.first_seen_at, j.last_seen_at, c.tier`;
+  j.first_seen_at, j.last_seen_at, c.tier, j.source_rank, j.apply_url`;
 
 /** Builds the WHERE clause shared by the listing and its count. */
 export function buildJobFilter(query: JobsQuery, now: Date): { where: string; params: Record<string, unknown> } {
@@ -199,6 +206,7 @@ export function buildJobFilter(query: JobsQuery, now: Date): { where: string; pa
     conditions.push("COALESCE(j.posted_at, j.first_seen_at) >= @postedAfter");
     params.postedAfter = new Date(now.getTime() - query.postedWithin * 86_400_000).toISOString();
   }
+  if (query.direct) conditions.push("(j.source_rank = 0 OR j.apply_url IS NOT NULL)");
   if (query.company) {
     conditions.push("j.company_key = @company");
     params.company = query.company;
@@ -241,10 +249,10 @@ export function createJobsRouter(db: Db): Router {
   router.get("/:id", (req, res) => {
     const row = db
       .prepare(
-        `SELECT ${LIST_COLUMNS}, j.description, j.closed_at, j.fingerprint
+        `SELECT ${LIST_COLUMNS}, j.description, j.closed_at, j.fingerprint, j.apply_method
          FROM jobs j LEFT JOIN companies c ON c.company_key = j.company_key WHERE j.id = ?`,
       )
-      .get(req.params.id) as (JobRow & { closed_at: string | null; fingerprint: string }) | undefined;
+      .get(req.params.id) as (JobRow & { closed_at: string | null; fingerprint: string; apply_method: string | null }) | undefined;
     if (!row) {
       res.status(404).json({ error: "Job not found" });
       return;
@@ -253,10 +261,15 @@ export function createJobsRouter(db: Db): Router {
       .prepare("SELECT source, url FROM jobs WHERE fingerprint = ? AND id != ? AND closed_at IS NULL ORDER BY source_rank")
       .all(row.fingerprint, row.id) as { source: string; url: string }[];
 
-    const detail: JobDetail & { closedAt: string | null; alsoOn: { source: string; sourceName: string; url: string }[] } = {
+    const detail: JobDetail & {
+      closedAt: string | null;
+      applyMethod: string | null;
+      alsoOn: { source: string; sourceName: string; url: string }[];
+    } = {
       ...rowToJob(row),
       description: row.description ?? null,
       closedAt: row.closed_at,
+      applyMethod: row.source_rank === 0 ? "source" : row.apply_method,
       alsoOn: alsoOn.map((d) => ({ ...d, sourceName: findSource(d.source)?.name ?? d.source })),
     };
     res.json(detail);

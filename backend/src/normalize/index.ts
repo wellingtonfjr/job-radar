@@ -2,6 +2,7 @@ import type { NormalizedJob, RawJob } from "../domain/job.js";
 import { classifyCategory, classifyEmploymentType, classifySeniority } from "./classify.js";
 import { cleanText, decodeEntities, htmlToText } from "./html.js";
 import { inferWorkplace, parseAllowedCountries } from "./location.js";
+import { extractPostingLinks } from "../resolve/postingUrls.js";
 import { extractSkills } from "./skills.js";
 import { annualUsd, extractSalaryFromDescription, parseSalaryText, validateSalary } from "./salary.js";
 
@@ -80,6 +81,7 @@ export function normalizeJob(source: string, feed: string, raw: RawJob): Normali
     skills: extractSkills(title, tags, description),
     tags,
     description,
+    descriptionLinks: extractPostingLinks(raw.descriptionHtml ?? raw.descriptionText),
     postedAt: postedAt && postedAt > now ? now : postedAt,
     expiresAt: toIsoDate(raw.expiresAt),
     fingerprint: fingerprint(company, title),

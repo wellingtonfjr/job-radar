@@ -11,6 +11,8 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     companyLogo: null,
     companyTier: 'S',
     url: 'https://example.com/jobs/1',
+    applyUrl: 'https://example.com/jobs/1',
+    applyDirect: true,
     locations: ['Remote - Worldwide'],
     workplace: 'remote',
     allowedCountries: null,
@@ -30,7 +32,7 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
 }
 
 export function makeDetail(overrides: Partial<JobDetail> = {}): JobDetail {
-  return { ...makeJob(), description: 'About us\n\nWe build things.', closedAt: null, alsoOn: [], ...overrides };
+  return { ...makeJob(), description: 'About us\n\nWe build things.', closedAt: null, applyMethod: 'source', alsoOn: [], ...overrides };
 }
 
 export const stats: Stats = {

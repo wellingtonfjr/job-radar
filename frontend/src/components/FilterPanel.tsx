@@ -71,6 +71,14 @@ export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
         )}
       </div>
 
+      <label className="switch">
+        <input type="checkbox" checked={filters.direct} onChange={(e) => set('direct', e.target.checked)} />
+        <span className="switch__text">
+          <strong>Employer's own posting only</strong>
+          <span>Hide roles we can only link to a job board for.</span>
+        </span>
+      </label>
+
       <FilterSection title="Work mode" activeCount={filters.workplace.length} defaultOpen>
         <PillGroup
           label="Work mode"

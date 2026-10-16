@@ -24,6 +24,7 @@ export function ActiveFilters({ filters, stats, onChange }: ActiveFiltersProps) 
   });
 
   const tokens: Token[] = [
+    ...(filters.direct ? [{ key: 'direct', label: 'Employer posting only', remove: () => ({ ...filters, direct: false }) }] : []),
     ...(filters.q.trim() ? [{ key: 'q', label: `“${filters.q.trim()}”`, remove: () => ({ ...filters, q: '' }) }] : []),
     ...filters.workplace.map((v) => ({ key: `wp-${v}`, label: WORKPLACE_LABELS[v], remove: () => without('workplace', v) })),
     ...(filters.country

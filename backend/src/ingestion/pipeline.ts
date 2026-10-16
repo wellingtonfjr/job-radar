@@ -29,12 +29,12 @@ const UPSERT_SQL = `
   INSERT INTO jobs (
     id, source, feed, external_id, title, company, company_key, company_logo, url, locations,
     workplace, allowed_countries, category, seniority, employment_type, salary_min, salary_max,
-    salary_currency, salary_period, salary_min_usd_year, skills, tags, description, search_text,
+    salary_currency, salary_period, salary_min_usd_year, skills, tags, description, description_links, search_text,
     posted_at, expires_at, fingerprint, source_rank, first_seen_at, last_seen_at, closed_at
   ) VALUES (
     @id, @source, @feed, @externalId, @title, @company, @companyKey, @companyLogo, @url, @locations,
     @workplace, @allowedCountries, @category, @seniority, @employmentType, @salaryMin, @salaryMax,
-    @salaryCurrency, @salaryPeriod, @salaryMinUsdYear, @skills, @tags, @description, @searchText,
+    @salaryCurrency, @salaryPeriod, @salaryMinUsdYear, @skills, @tags, @description, @descriptionLinks, @searchText,
     @postedAt, @expiresAt, @fingerprint, @sourceRank, @seenAt, @seenAt, NULL
   )
   ON CONFLICT(source, external_id) DO UPDATE SET
@@ -58,6 +58,7 @@ const UPSERT_SQL = `
     skills = excluded.skills,
     tags = excluded.tags,
     description = excluded.description,
+    description_links = excluded.description_links,
     search_text = excluded.search_text,
     posted_at = COALESCE(excluded.posted_at, jobs.posted_at),
     expires_at = excluded.expires_at,
@@ -92,6 +93,7 @@ function toRow(job: NormalizedJob, sourceRank: number, seenAt: string): Record<s
     skills: JSON.stringify(job.skills),
     tags: JSON.stringify(job.tags),
     description: job.description,
+    descriptionLinks: JSON.stringify(job.descriptionLinks),
     searchText: toSearchKey([job.title, job.company, ...job.skills, ...job.tags].join(" ")),
     postedAt: job.postedAt,
     expiresAt: job.expiresAt,

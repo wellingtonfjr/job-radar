@@ -110,14 +110,22 @@ export interface NormalizedJob {
   skills: string[];
   tags: string[];
   description: string | null;
+  /** Employer job-posting links (ATS) mentioned in the description. */
+  descriptionLinks: string[];
   postedAt: string | null;
   expiresAt: string | null;
   fingerprint: string;
 }
 
 /** The public API shape for a job. */
-export interface Job extends Omit<NormalizedJob, "feed" | "fingerprint" | "description"> {
+export interface Job extends Omit<NormalizedJob, "feed" | "fingerprint" | "description" | "descriptionLinks"> {
   sourceName: string;
+  /**
+   * Where "Apply" should go: the employer's own posting when it is known
+   * (`direct`), otherwise the source listing (`url`).
+   */
+  applyUrl: string;
+  applyDirect: boolean;
   companyTier: PayTier | null;
   firstSeenAt: string;
   lastSeenAt: string;

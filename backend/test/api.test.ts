@@ -37,6 +37,24 @@ beforeAll(async () => {
   });
   await runIngestion(db, [ats], { staleAfterDays: 30 });
 
+  // Two job-board listings: one with a resolved employer link, one without.
+  const board = fakeSource("himalayas", "aggregator");
+  board.respond({
+    results: [
+      {
+        feed: "all",
+        complete: true,
+        jobs: [
+          rawJob({ externalId: "b1", company: "Globex", title: "Data Analyst", url: "https://himalayas.app/jobs/b1", postedAt: daysAgo(40) }),
+          rawJob({ externalId: "b2", company: "Initech", title: "QA Tester", url: "https://himalayas.app/jobs/b2", postedAt: daysAgo(41) }),
+        ],
+      },
+    ],
+    errors: [],
+  });
+  await runIngestion(db, [board], { staleAfterDays: 30 });
+  db.prepare("UPDATE jobs SET apply_url = ?, apply_method = 'ats-discovery' WHERE id = 'himalayas:b1'").run("https://jobs.lever.co/globex/1");
+
   server = createApp(db).listen(0);
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 });
@@ -50,7 +68,7 @@ describe("GET /api/jobs", () => {
   it("lists newest first with pagination metadata", async () => {
     const { status, body } = await get("/api/jobs?pageSize=2");
     expect(status).toBe(200);
-    expect(body).toMatchObject({ total: 4, page: 1, pageSize: 2, hasMore: true });
+    expect(body).toMatchObject({ total: 6, page: 1, pageSize: 2, hasMore: true });
     expect(body.jobs.map((j: any) => j.id)).toEqual(["greenhouse:1", "greenhouse:4"]);
     expect(body.jobs[0]).toMatchObject({ sourceName: "Greenhouse", category: "software-development", seniority: "senior", skills: ["TypeScript", "React"] });
     expect(body.jobs[0]).not.toHaveProperty("description");
@@ -68,11 +86,26 @@ describe("GET /api/jobs", () => {
     ["minSalary=100000", ["greenhouse:1"]],
     ["postedWithin=7&category=software-development", ["greenhouse:1"]],
     // BR: unrestricted remote + LATAM; never the Berlin on-site or US-only jobs.
-    ["country=br", ["greenhouse:1", "greenhouse:4"]],
-    ["country=DE", ["greenhouse:1", "greenhouse:2"]],
+    ["country=br", ["greenhouse:1", "greenhouse:4", "himalayas:b1", "himalayas:b2"]],
+    ["country=DE", ["greenhouse:1", "greenhouse:2", "himalayas:b1", "himalayas:b2"]],
   ])("filters by %s", async (query, ids) => {
     const { body } = await get(`/api/jobs?${query}`);
     expect(body.jobs.map((j: any) => j.id)).toEqual(ids);
+  });
+
+  it("points Apply at the employer's posting when known, and can filter to those", async () => {
+    const { body } = await get("/api/jobs?pageSize=50");
+    const byId = Object.fromEntries(body.jobs.map((j: any) => [j.id, j]));
+    expect(byId["greenhouse:1"]).toMatchObject({ applyUrl: "https://example.com/jobs/1", applyDirect: true });
+    expect(byId["himalayas:b1"]).toMatchObject({ url: "https://himalayas.app/jobs/b1", applyUrl: "https://jobs.lever.co/globex/1", applyDirect: true });
+    expect(byId["himalayas:b2"]).toMatchObject({ applyUrl: "https://himalayas.app/jobs/b2", applyDirect: false });
+
+    const direct = await get("/api/jobs?direct=true&pageSize=50");
+    expect(direct.body.jobs.map((j: any) => j.id)).not.toContain("himalayas:b2");
+    expect(direct.body.total).toBe(5);
+
+    const detail = await get("/api/jobs/himalayas%3Ab1");
+    expect(detail.body.applyMethod).toBe("ats-discovery");
   });
 
   it("rejects invalid filters with 400", async () => {
@@ -97,7 +130,7 @@ describe("GET /api/jobs/:id", () => {
 describe("GET /api/stats", () => {
   it("reports totals, facets and source health", async () => {
     const { body } = await get("/api/stats");
-    expect(body.totals).toMatchObject({ openJobs: 4, companies: 1, remote: 3, withSalary: 1, newLast7Days: 3 });
+    expect(body.totals).toMatchObject({ openJobs: 6, companies: 3, remote: 5, withSalary: 1, newLast7Days: 3 });
     expect(body.categories.find((c: any) => c.id === "design")).toMatchObject({ count: 1 });
     expect(body.countries).toEqual(expect.arrayContaining(["BR", "DE", "US"]));
     expect(body.sources.find((s: any) => s.id === "greenhouse")).toMatchObject({ openJobs: 4, lastRun: { status: "ok", fetched: 4 } });

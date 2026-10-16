@@ -14,6 +14,7 @@ describe('filters', () => {
       skills: ['TypeScript', 'C#'],
       minSalary: 100_000,
       postedWithin: 7,
+      direct: true,
     };
     expect(parseFilters(`?${serializeFilters(filters)}`)).toEqual(filters);
   });
