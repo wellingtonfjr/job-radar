@@ -61,7 +61,7 @@ interface CachedBoard {
 const CONCURRENCY = 4;
 
 export async function resolveApplyLinks(db: Db, net: ResolverNet, options: ResolveOptions): Promise<ResolveSummary> {
-  const { now, maxJobs = 3000, discoveryBudget = 60, recheckAfterDays = 7, boardRecheckDays = 14 } = options;
+  const { now, maxJobs = 3000, discoveryBudget = 200, recheckAfterDays = 7, boardRecheckDays = 14 } = options;
   const nowIso = now.toISOString();
   const recheckBefore = new Date(now.getTime() - recheckAfterDays * 86_400_000).toISOString();
   const boardRecheckBefore = new Date(now.getTime() - boardRecheckDays * 86_400_000).toISOString();

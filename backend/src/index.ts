@@ -13,7 +13,11 @@ const server = app.listen(config.port, () => {
 
 const scheduler =
   config.schedulerTickMinutes > 0
-    ? startScheduler(db, SOURCES, { tickMinutes: config.schedulerTickMinutes, staleAfterDays: config.staleAfterDays })
+    ? startScheduler(db, SOURCES, {
+        tickMinutes: config.schedulerTickMinutes,
+        staleAfterDays: config.staleAfterDays,
+        ingestIntervalHours: config.ingestIntervalHours,
+      })
     : null;
 if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");
 

@@ -11,8 +11,17 @@ function intFromEnv(name: string, fallback: number): number {
 export const config = {
   port: intFromEnv("PORT", 3001),
   dbPath: process.env.DB_PATH ?? path.join(backendRoot, "data", "job-radar.db"),
-  /** Run due sources on startup and then on this cadence. 0 disables. */
-  schedulerTickMinutes: process.env.SCHEDULER === "off" ? 0 : intFromEnv("SCHEDULER_TICK_MINUTES", 15),
+  /**
+   * How often each source is refreshed (at least; a source's own minimum
+   * interval wins when longer). Twice a day keeps listings current: jobs
+   * rarely change by the hour, and providers ask not to be polled often.
+   */
+  ingestIntervalHours: intFromEnv("INGEST_INTERVAL_HOURS", 12),
+  /**
+   * How often the in-process scheduler checks for due sources (it runs on
+   * startup too). Checking is free; fetching only happens when due. 0 disables.
+   */
+  schedulerTickMinutes: process.env.SCHEDULER === "off" ? 0 : intFromEnv("SCHEDULER_TICK_MINUTES", 60),
   /**
    * Jobs from feeds we can't read completely are closed after this many
    * days without being seen again (see ingestion/pipeline.ts).

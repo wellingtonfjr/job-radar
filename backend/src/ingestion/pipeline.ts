@@ -17,6 +17,8 @@ export interface SourceRunSummary {
 export interface IngestionOptions {
   /** Ignore each source's minimum interval. */
   force?: boolean;
+  /** Global minimum minutes between runs of any source (e.g. 12h). */
+  minIntervalMinutes?: number;
   now?: () => Date;
   staleAfterDays: number;
 }
@@ -106,12 +108,13 @@ function toRow(job: NormalizedJob, sourceRank: number, seenAt: string): Record<s
   };
 }
 
-function isDue(db: Db, source: SourceAdapter, now: Date): boolean {
+function isDue(db: Db, source: SourceAdapter, now: Date, floorMinutes = 0): boolean {
   const last = db
     .prepare("SELECT started_at FROM source_runs WHERE source = ? AND status != 'error' ORDER BY started_at DESC LIMIT 1")
     .get(source.id) as { started_at: string } | undefined;
   if (!last) return true;
-  return now.getTime() - Date.parse(last.started_at) >= source.minIntervalMinutes * 60_000;
+  const interval = Math.max(source.minIntervalMinutes, floorMinutes);
+  return now.getTime() - Date.parse(last.started_at) >= interval * 60_000;
 }
 
 /** Fetches one source and writes its results. Never throws. */
@@ -293,7 +296,7 @@ export async function runIngestion(db: Db, sources: SourceAdapter[], options: In
   const now = options.now?.() ?? new Date();
   const summaries = await Promise.all(
     sources.map((source): Promise<SourceRunSummary> => {
-      if (!options.force && !isDue(db, source, now)) {
+      if (!options.force && !isDue(db, source, now, options.minIntervalMinutes)) {
         return Promise.resolve({ source: source.id, status: "skipped", fetched: 0, inserted: 0, closed: 0, errors: [] });
       }
       return ingestSource(db, source, now);

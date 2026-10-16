@@ -22,14 +22,19 @@ split view whose selection is part of the URL (`?job=…`).
 
 ## Sources
 
-| Source | Kind | Scope | Cadence |
+Every source is refreshed **twice a day** by default (`INGEST_INTERVAL_HOURS`,
+12). That's plenty, since postings rarely change by the hour, and it stays
+well inside every provider's limits. The minimum column is the shortest
+interval a source will ever be polled at, even with a smaller setting.
+
+| Source | Kind | Scope per run | Minimum interval |
 | --- | --- | --- | --- |
-| Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts` | hourly |
-| InHire | Employer ATS (Brazil) | Remote and hybrid roles of each company in `companies.ts` (one detail request per role) | every 6h |
-| Himalayas | Aggregator | Newest 500 remote jobs per run (the feed has 100k+) | hourly |
-| Jobicy | Aggregator | Up to 500 remote jobs | every 2h |
-| Arbeitnow | Aggregator | Full feed (Europe-heavy) | hourly |
-| Remotive | Aggregator | Public sample feed only (~15 jobs, delayed 24h) | every 6h, per its terms |
+| Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts` | 1h |
+| InHire | Employer ATS (Brazil) | Remote and hybrid roles of each company in `companies.ts` (one detail request per role) | 6h |
+| Himalayas | Aggregator | Newest 1,000 remote jobs (the feed has 100k+) | 1h |
+| Jobicy | Aggregator | Up to 500 remote jobs | 2h |
+| Arbeitnow | Aggregator | Full feed (Europe-heavy) | 1h |
+| Remotive | Aggregator | Public sample feed only (~15 jobs, delayed 24h) | 6h, per its terms |
 
 Aggregator jobs link back to the aggregator's posting, as their API terms
 require. Remotive's free API is deliberately small; most volume comes from the
@@ -54,7 +59,7 @@ each board listing. It tries these in order of reliability:
 
 Every link is checked to still load before it's used. Results are re-checked
 weekly, discovered boards are cached per company (no board found → retried
-after 14 days), and each run searches at most 60 companies. For a first
+after 14 days), and each run searches at most 200 companies. For a first
 backfill, run `npm run resolve -- --discovery-budget=500`.
 
 Not resolved on purpose: Jobicy only exposes the employer URL through a
@@ -108,8 +113,9 @@ npm run dev                                              # API on :3001, schedul
 cd frontend && npm install && npm run dev                # UI on :5173, proxies /api
 ```
 
-The API refreshes due sources on startup and every `SCHEDULER_TICK_MINUTES`
-(default 15), respecting each source's minimum interval. Other settings:
+The API checks for due sources on startup and every `SCHEDULER_TICK_MINUTES`
+(default 60). A source is due once `INGEST_INTERVAL_HOURS` (default 12) have
+passed since its last run, so restarts don't cause extra fetching. Other settings:
 `PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `SCHEDULER=off`, `CORS_ORIGIN`. For a
 production frontend build, set `VITE_API_URL` if the API isn't same-origin.
 
@@ -164,5 +170,5 @@ cd frontend && npm run lint && npm run typecheck && npm test && npm run build
   match a country filter.
 - Salary conversion uses static, approximate exchange rates and is only used
   for filtering. Salaries are always displayed in the original currency.
-- Himalayas posts jobs faster than an hourly 500-job window can cover, so its
-  jobs are a sample, not the full feed.
+- Himalayas posts jobs faster than a twice-daily 1,000-job window can cover,
+  so its jobs are a sample, not the full feed.

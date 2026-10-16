@@ -30,7 +30,11 @@ async function main(): Promise<void> {
   const db = openDb(config.dbPath);
   if (!resolveOnly) {
     console.log(`[ingest] ${sources.length} source(s)${force ? " (forced)" : ""} → ${config.dbPath}`);
-    const summaries = await runIngestion(db, sources, { force, staleAfterDays: config.staleAfterDays });
+    const summaries = await runIngestion(db, sources, {
+      force,
+      staleAfterDays: config.staleAfterDays,
+      minIntervalMinutes: config.ingestIntervalHours * 60,
+    });
     console.table(
       summaries.map(({ errors, ...s }) => ({ ...s, errors: errors.length, firstError: errors[0] ? `${errors[0].feed}: ${errors[0].error}` : "" })),
     );

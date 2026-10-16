@@ -6,8 +6,8 @@ import type { FetchOutcome, SourceAdapter } from "./types.js";
 /**
  * https://himalayas.app/api — public remote-jobs feed, newest first, 20 per
  * page with cursor pagination. The full feed is >100k jobs, so each run only
- * reads the newest pages; with an hourly cadence that keeps up with new
- * postings, but the fetch is never `complete` (absence ≠ closed). Himalayas
+ * reads the newest 1,000 (a sample at a twice-daily cadence; the feed grows
+ * faster than that), and the fetch is never `complete` (absence ≠ closed). Himalayas
  * provides an `expiryDate`, which is what retires its jobs instead.
  */
 interface HimalayasJob {
@@ -35,7 +35,7 @@ interface HimalayasResponse {
   nextCursor?: string | null;
 }
 
-const MAX_PAGES = 25;
+const MAX_PAGES = 50;
 
 function toRawJob(j: HimalayasJob): RawJob {
   const restrictions = j.locationRestrictions ?? [];

@@ -119,6 +119,18 @@ describe("runIngestion", () => {
     expect(openIds(db)).toEqual([]);
   });
 
+  it("applies a global minimum interval on top of each source's own", async () => {
+    const ats = fakeSource("ats"); // own minimum: 60 min
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1" })] }], errors: [] });
+    const twiceADay = { staleAfterDays: 30, minIntervalMinutes: 12 * 60 };
+    await runIngestion(db, [ats], { ...twiceADay, now: () => T0 });
+
+    const [early] = await runIngestion(db, [ats], { ...twiceADay, now: () => hoursLater(6) });
+    expect(early?.status).toBe("skipped");
+    const [due] = await runIngestion(db, [ats], { ...twiceADay, now: () => hoursLater(12) });
+    expect(due?.status).toBe("ok");
+  });
+
   it("respects each source's minimum interval unless forced", async () => {
     const ats = fakeSource("ats");
     ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1" })] }], errors: [] });

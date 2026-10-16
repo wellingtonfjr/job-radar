@@ -37,17 +37,22 @@ function logSummaries(summaries: SourceRunSummary[]): void {
 export function startScheduler(
   db: Db,
   sources: SourceAdapter[],
-  { tickMinutes, staleAfterDays }: { tickMinutes: number; staleAfterDays: number },
+  { tickMinutes, staleAfterDays, ingestIntervalHours }: { tickMinutes: number; staleAfterDays: number; ingestIntervalHours: number },
 ): Scheduler {
   let running: Promise<void> | null = null;
 
   const tick = (): void => {
     if (running) return;
-    running = runIngestion(db, sources, { staleAfterDays })
-      .then(logSummaries)
+    running = runIngestion(db, sources, { staleAfterDays, minIntervalMinutes: ingestIntervalHours * 60 })
+      .then((summaries) => {
+        logSummaries(summaries);
+        return summaries;
+      })
       // Then point board listings at the employers' own postings.
-      .then(() => resolveApplyLinks(db, liveNet, { now: new Date() }))
-      .then(logResolve)
+      .then((summaries) =>
+        // Resolve only after a cycle that actually fetched something.
+        summaries.some((s) => s.status !== "skipped") ? resolveApplyLinks(db, liveNet, { now: new Date() }).then(logResolve) : undefined,
+      )
       .catch((err: unknown) => console.error("[ingest] cycle failed:", err))
       .finally(() => {
         running = null;
