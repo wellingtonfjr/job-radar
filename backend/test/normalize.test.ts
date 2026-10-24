@@ -1,3 +1,4 @@
+import type { RawJob } from "../src/domain/job.js";
 import { describe, expect, it } from "vitest";
 import { classifyCategory, classifyEmploymentType, classifySeniority } from "../src/normalize/classify.js";
 import { htmlToText } from "../src/normalize/html.js";
@@ -6,6 +7,7 @@ import { inferWorkplace, parseAllowedCountries, splitLocations } from "../src/no
 import { annualUsd, extractSalaryFromDescription, parseSalaryText } from "../src/normalize/salary.js";
 import { extractSkills } from "../src/normalize/skills.js";
 import { toSearchKey } from "../src/normalize/text.js";
+import { safeUrl } from "../src/normalize/url.js";
 
 describe("parseSalaryText", () => {
   it.each([
@@ -211,5 +213,42 @@ describe("normalizeJob", () => {
     });
     // Future dates are clamped to "now".
     expect(Date.parse(job.postedAt as string)).toBeLessThanOrEqual(Date.now());
+  });
+});
+
+describe("safeUrl", () => {
+  it.each([
+    ["https://boards.greenhouse.io/acme/jobs/1?gh_jid=1#apply", "https://boards.greenhouse.io/acme/jobs/1?gh_jid=1#apply"],
+    ["  https://acme.com/jobs/1  ", "https://acme.com/jobs/1"],
+    ["http://acme.com/jobs/1", "https://acme.com/jobs/1"],
+    ["https://acme.com/jobs?a=1&amp;b=2", "https://acme.com/jobs?a=1&b=2"],
+    ["https://user:secret@evil.example/login", "https://evil.example/login"],
+  ])("keeps web address %s", (input, expected) => {
+    expect(safeUrl(input)).toBe(expected);
+  });
+
+  it.each([
+    "javascript:alert(document.cookie)",
+    "JavaScript:alert(1)",
+    "  javascript:alert(1)",
+    "data:text/html,<script>alert(1)</script>",
+    "vbscript:msgbox(1)",
+    "ftp://acme.com/file",
+    "/relative/path",
+    "not a url",
+    "",
+  ])("rejects %s", (input) => {
+    expect(safeUrl(input)).toBeNull();
+  });
+
+  it("can refuse plain http instead of upgrading it", () => {
+    expect(safeUrl("http://acme.com/jobs/1", { upgradeHttp: false })).toBeNull();
+  });
+
+  it("is applied when normalizing source jobs", () => {
+    const base: Omit<RawJob, "url"> = { externalId: "1", title: "Engineer", company: "Acme", locations: [], workplace: null };
+    expect(normalizeJob("x", "all", { ...base, url: "javascript:alert(1)" }).url).toBe("");
+    expect(normalizeJob("x", "all", { ...base, url: "https://acme.com/1", companyLogo: "data:image/svg+xml,<svg onload=alert(1)>" }).companyLogo).toBeNull();
+    expect(normalizeJob("x", "all", { ...base, url: "https://acme.com/1", companyLogo: "http://cdn.acme.com/logo.png" }).companyLogo).toBe("https://cdn.acme.com/logo.png");
   });
 });

@@ -5,6 +5,7 @@ import { inferWorkplace, parseAllowedCountries } from "./location.js";
 import { extractPostingLinks } from "../resolve/postingUrls.js";
 import { extractSkills } from "./skills.js";
 import { annualUsd, extractSalaryFromDescription, parseSalaryText, validateSalary } from "./salary.js";
+import { safeUrl } from "./url.js";
 
 // Matched against the already-normalized (lowercase, alphanumeric) name.
 const COMPANY_SUFFIXES =
@@ -78,8 +79,11 @@ export function normalizeJob(source: string, feed: string, raw: RawJob): Normali
     externalId: raw.externalId,
     title,
     company,
-    companyLogo: raw.companyLogo || null,
-    url: raw.url,
+    // Source URLs become links and images on the site: only web addresses
+    // pass. An unusable job URL leaves `url` empty, and the pipeline skips
+    // the job; an unusable logo just falls back to the company's initial.
+    companyLogo: safeUrl(raw.companyLogo),
+    url: safeUrl(raw.url) ?? "",
     locations,
     workplace,
     allowedCountries: parseAllowedCountries(locations),

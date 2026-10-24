@@ -141,8 +141,14 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       for (const raw of result.jobs) {
         try {
           const job = normalizeJob(source.id, result.feed, raw);
+          if (!job.url) {
+            // Not a web address (or a script/data URL): never stored, but
+            // reported so a source sending bad links doesn't go unnoticed.
+            summary.errors.push({ feed: result.feed, error: `rejected unsafe or invalid URL for ${raw.externalId}` });
+            continue;
+          }
           // Résumé pools are skipped (and closed, if stored before).
-          if (job.title && job.url && isOpening(job.title)) seen.set(job.id, job);
+          if (job.title && isOpening(job.title)) seen.set(job.id, job);
         } catch (err) {
           summary.errors.push({ feed: result.feed, error: `normalize ${raw.externalId}: ${errorMessage(err)}` });
         }

@@ -105,6 +105,18 @@ describe("runIngestion", () => {
     expect(openIds(db)).toEqual([]);
   });
 
+  it("never stores jobs whose URL isn't a web address, and reports them", async () => {
+    const agg = fakeSource("agg", "aggregator");
+    agg.respond({
+      results: [{ feed: "all", complete: true, jobs: [rawJob({ externalId: "ok" }), rawJob({ externalId: "evil", url: "javascript:alert(1)" })] }],
+      errors: [],
+    });
+    const [summary] = await runIngestion(db, [agg], { staleAfterDays: 30, now: () => T0 });
+    expect(openIds(db)).toEqual(["agg:ok"]);
+    expect(summary).toMatchObject({ status: "partial", fetched: 1, inserted: 1 });
+    expect(summary?.errors).toEqual([{ feed: "all", error: "rejected unsafe or invalid URL for evil" }]);
+  });
+
   it("never lists résumé pools, and retires ones stored earlier", async () => {
     const agg = fakeSource("agg", "aggregator");
     agg.respond({ results: [{ feed: "all", complete: false, jobs: [rawJob({ externalId: "1" }), rawJob({ externalId: "2", title: "Banco de Talentos - Tecnologia" })] }], errors: [] });

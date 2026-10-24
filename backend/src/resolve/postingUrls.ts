@@ -1,4 +1,4 @@
-import { decodeEntities } from "../normalize/html.js";
+import { safeUrl } from "../normalize/url.js";
 
 /**
  * Recognizes URLs of a *specific job posting* on an applicant-tracking
@@ -29,19 +29,13 @@ const TRACKING_PARAM = /^(utm_[a-z]+|ref|referrer|source|src|gh_src|lever-source
 
 /** Removes tracking parameters; keeps ids like `gh_jid`. Returns null for non-https URLs. */
 export function cleanUrl(raw: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(decodeEntities(raw.trim()));
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "https:") return null;
+  const safe = safeUrl(raw, { upgradeHttp: false });
+  if (!safe) return null;
+  const url = new URL(safe);
   for (const key of [...url.searchParams.keys()]) {
     if (TRACKING_PARAM.test(key)) url.searchParams.delete(key);
   }
   url.hash = "";
-  url.username = "";
-  url.password = "";
   return url.toString();
 }
 
