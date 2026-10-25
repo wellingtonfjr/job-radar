@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { openDb } from "./db/index.js";
@@ -5,10 +7,16 @@ import { startScheduler } from "./ingestion/scheduler.js";
 import { SOURCES } from "./sources/index.js";
 
 const db = openDb(config.dbPath);
-const app = createApp(db, { corsOrigin: config.corsOrigin });
+const app = createApp(db, { corsOrigin: config.corsOrigin, staticDir: config.frontendDist });
+const servesFrontend = fs.existsSync(path.join(config.frontendDist, "index.html"));
 
 const server = app.listen(config.port, () => {
   console.log(`job-radar API listening on http://localhost:${config.port}`);
+  console.log(
+    servesFrontend
+      ? `[web] serving the built frontend from ${config.frontendDist}`
+      : "[web] no frontend build found; API only (use the Vite dev server for the UI)",
+  );
 });
 
 const scheduler =

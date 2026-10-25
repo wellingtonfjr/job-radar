@@ -11,6 +11,8 @@ function intFromEnv(name: string, fallback: number): number {
 export const config = {
   port: intFromEnv("PORT", 3001),
   dbPath: process.env.DB_PATH ?? path.join(backendRoot, "data", "job-radar.db"),
+  /** Built frontend (frontend/dist) served by the API in production. */
+  frontendDist: process.env.FRONTEND_DIST ?? path.resolve(backendRoot, "..", "frontend", "dist"),
   /**
    * How often each source is refreshed (at least; a source's own minimum
    * interval wins when longer). Twice a day keeps listings current: jobs
