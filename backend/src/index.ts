@@ -7,7 +7,11 @@ import { startScheduler } from "./ingestion/scheduler.js";
 import { SOURCES } from "./sources/index.js";
 
 const db = openDb(config.dbPath);
-const app = createApp(db, { corsOrigin: config.corsOrigin, staticDir: config.frontendDist });
+const app = createApp(db, {
+  corsOrigin: config.corsOrigin,
+  staticDir: config.frontendDist,
+  rateLimitPerMinute: config.rateLimitPerMinute,
+});
 const servesFrontend = fs.existsSync(path.join(config.frontendDist, "index.html"));
 
 const server = app.listen(config.port, () => {

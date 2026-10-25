@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+/** Default API requests per visitor per minute (see rateLimitPerMinute below). */
+export const DEFAULT_RATE_LIMIT_PER_MINUTE = 180;
+
 function intFromEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -30,4 +33,10 @@ export const config = {
    */
   staleAfterDays: intFromEnv("STALE_AFTER_DAYS", 30),
   corsOrigin: process.env.CORS_ORIGIN ?? "*",
+  /**
+   * API requests allowed per visitor (IP) per minute. Heavy human use of the
+   * UI is ~30-60/min; the headroom covers carrier-grade NAT, where many
+   * mobile users share one public IP.
+   */
+  rateLimitPerMinute: intFromEnv("RATE_LIMIT_PER_MINUTE", DEFAULT_RATE_LIMIT_PER_MINUTE),
 };

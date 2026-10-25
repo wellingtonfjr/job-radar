@@ -1,8 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import express, { type ErrorRequestHandler } from "express";
+import express, { type ErrorRequestHandler, type Request } from "express";
 import { createJobsRouter } from "./api/jobs.js";
 import { createStatsRouter } from "./api/stats.js";
+import { DEFAULT_RATE_LIMIT_PER_MINUTE } from "./config.js";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import type { Db } from "./db/index.js";
 
 /**
@@ -13,15 +15,44 @@ import type { Db } from "./db/index.js";
  */
 const FILE_EXTENSION = /\.(?:js|mjs|css|map|json|txt|xml|svg|png|jpe?g|gif|webp|avif|ico|woff2?|ttf|otf|webmanifest)$/i;
 
+/**
+ * The visitor's IP. Behind Fly's proxy every connection comes from the proxy,
+ * which puts the real client IP in Fly-Client-IP; locally there's no proxy,
+ * so the connection's own address is the visitor. (X-Forwarded-For is not
+ * used: its leftmost entries can be forged by the client.)
+ */
+export function clientIp(req: Request): string {
+  return req.header("fly-client-ip") ?? req.socket.remoteAddress ?? "unknown";
+}
+
 export interface AppOptions {
   corsOrigin?: string;
   /** Built frontend to serve (frontend/dist); ignored if it has no index.html. */
   staticDir?: string;
+  /** API requests allowed per visitor per minute. */
+  rateLimitPerMinute?: number;
 }
 
-export function createApp(db: Db, { corsOrigin = "*", staticDir }: AppOptions = {}) {
+export function createApp(db: Db, { corsOrigin = "*", staticDir, rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE }: AppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
+
+  // Per-visitor limit on the API only: static files are cheap and cached,
+  // and /health must stay reachable for the platform's health checks.
+  const apiLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: rateLimitPerMinute,
+    // Standard RateLimit headers tell well-behaved clients how much is left.
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    // ipKeyGenerator groups an IPv6 visitor's whole /56 block into one key,
+    // so rotating addresses inside it doesn't reset the count.
+    keyGenerator: (req) => ipKeyGenerator(clientIp(req)),
+    message: { error: "Too many requests, please slow down." },
+    // We deliberately key on Fly-Client-IP, so the library's warning about
+    // the (always present) X-Forwarded-For header doesn't apply.
+    validate: { xForwardedForHeader: false },
+  });
 
   // Read-only public API with no cookies/auth, so a permissive CORS policy
   // is safe; restrict with CORS_ORIGIN when deploying.
@@ -35,6 +66,8 @@ export function createApp(db: Db, { corsOrigin = "*", staticDir }: AppOptions = 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
   });
+
+  app.use("/api", apiLimiter);
   app.use("/api/jobs", createJobsRouter(db));
   app.use("/api/stats", createStatsRouter(db));
 
