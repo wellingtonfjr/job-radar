@@ -32,7 +32,12 @@ export const config = {
    * days without being seen again (see ingestion/pipeline.ts).
    */
   staleAfterDays: intFromEnv("STALE_AFTER_DAYS", 30),
-  corsOrigin: process.env.CORS_ORIGIN ?? "*",
+  /**
+   * Another origin allowed to call the API from a browser (e.g. a separate
+   * frontend). Unset by default: the UI is served from the same origin, so
+   * no CORS header is needed, and other sites can't read the API.
+   */
+  corsOrigin: process.env.CORS_ORIGIN || undefined,
   /**
    * API requests allowed per visitor (IP) per minute. Heavy human use of the
    * UI is ~30-60/min; the headroom covers carrier-grade NAT, where many

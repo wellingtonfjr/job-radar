@@ -116,7 +116,10 @@ cd frontend && npm install && npm run dev                # UI on :5173, proxies 
 The API checks for due sources on startup and every `SCHEDULER_TICK_MINUTES`
 (default 60). A source is due once `INGEST_INTERVAL_HOURS` (default 12) have
 passed since its last run, so restarts don't cause extra fetching. Other settings:
-`PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `SCHEDULER=off`, `CORS_ORIGIN`. For a
+`PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `SCHEDULER=off`, `RATE_LIMIT_PER_MINUTE`
+(default 180 API requests per visitor per minute), `FRONTEND_DIST` (built
+frontend the API serves; default `../frontend/dist`) and `CORS_ORIGIN` (unset
+by default: the UI is same-origin, so no other site may read the API). For a
 production frontend build, set `VITE_API_URL` if the API isn't same-origin.
 
 `npm run ingest` runs only the sources that are due, then resolves direct

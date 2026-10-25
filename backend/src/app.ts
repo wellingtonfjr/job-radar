@@ -26,6 +26,7 @@ export function clientIp(req: Request): string {
 }
 
 export interface AppOptions {
+  /** Origin allowed to read the API cross-origin; omit for same-origin only. */
   corsOrigin?: string;
   /** Built frontend to serve (frontend/dist); ignored if it has no index.html. */
   staticDir?: string;
@@ -33,7 +34,7 @@ export interface AppOptions {
   rateLimitPerMinute?: number;
 }
 
-export function createApp(db: Db, { corsOrigin = "*", staticDir, rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE }: AppOptions = {}) {
+export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE }: AppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
 
@@ -54,14 +55,18 @@ export function createApp(db: Db, { corsOrigin = "*", staticDir, rateLimitPerMin
     validate: { xForwardedForHeader: false },
   });
 
-  // Read-only public API with no cookies/auth, so a permissive CORS policy
-  // is safe; restrict with CORS_ORIGIN when deploying.
-  app.use((_req, res, next) => {
-    res.header("Access-Control-Allow-Origin", corsOrigin);
-    res.header("Access-Control-Allow-Methods", "GET,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type");
-    next();
-  });
+  // CORS is opt-in. The UI is served from the same origin, which needs no
+  // CORS header at all; sending "*" would let any other website read the
+  // API through its own visitors' browsers (each with its own IP, so the
+  // rate limit wouldn't help). Set CORS_ORIGIN to allow one specific origin.
+  if (corsOrigin) {
+    app.use((_req, res, next) => {
+      res.header("Access-Control-Allow-Origin", corsOrigin);
+      res.header("Access-Control-Allow-Methods", "GET,OPTIONS");
+      res.header("Access-Control-Allow-Headers", "Content-Type");
+      next();
+    });
+  }
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
