@@ -1,0 +1,21 @@
+# What `docker build .` must NOT send to the image. Docker ignores
+# .gitignore; this file is the only filter for the build context.
+
+# Dependencies and builds: the build stage installs and builds its own, for
+# Linux. Host node_modules (e.g. better-sqlite3 compiled for macOS) would
+# break the app if copied in.
+**/node_modules
+**/dist
+frontend/.vite
+
+# Local data and secrets: never inside an image.
+backend/data
+**/*.db
+**/*.db-*
+**/.env
+**/.env.*
+
+# Not part of the app.
+.git
+.claude
+**/.DS_Store
