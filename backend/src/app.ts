@@ -5,6 +5,7 @@ import { createJobsRouter } from "./api/jobs.js";
 import { createStatsRouter } from "./api/stats.js";
 import { DEFAULT_RATE_LIMIT_PER_MINUTE } from "./config.js";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import helmet from "helmet";
 import type { Db } from "./db/index.js";
 
 /**
@@ -37,6 +38,31 @@ export interface AppOptions {
 export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE }: AppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
+
+  // Security headers on every response (pages, files and API). The CSP only
+  // allows our own scripts, styles and API; company logos come from the job
+  // sources' CDNs, so images may load from any HTTPS origin (images can't
+  // run code). Helmet's other defaults (HSTS, nosniff, …) stay on.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'"],
+          styleSrc: ["'self'"],
+          imgSrc: ["'self'", "https:", "data:"],
+          connectSrc: ["'self'"],
+          frameAncestors: ["'none'"],
+          objectSrc: ["'none'"],
+          baseUri: ["'self'"],
+          formAction: ["'self'"],
+        },
+      },
+      // Employers see that a candidate came from job-radar, but not the
+      // search or filters in the URL.
+      referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    }),
+  );
 
   // Per-visitor limit on the API only: static files are cheap and cached,
   // and /health must stay reachable for the platform's health checks.
