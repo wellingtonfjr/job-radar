@@ -52,6 +52,8 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
   };
   const activeCount = countActiveFilters(filters);
   const hasQuery = activeCount > 0 || filters.q.trim() !== '';
+  // With filters on, "new this week" counts only the matching roles.
+  const newThisWeek = hasQuery ? listing.newLast7Days : stats?.totals.newLast7Days;
   const resultLabel = listing.status === 'ready' ? `Show ${formatCount(listing.total)} roles` : 'Show roles';
 
   const panel = <FilterPanel filters={filters} stats={stats} onChange={applyFilters} />;
@@ -74,10 +76,10 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
               {listing.status === 'ready' ? (
                 <>
                   <span className="num">{formatCount(listing.total)}</span> {hasQuery ? 'matching' : 'verified open'}
-                  {stats && (
+                  {newThisWeek !== undefined && (
                     <>
                       {' · '}
-                      <span className="num">{formatCount(stats.totals.newLast7Days)}</span> new this week
+                      <span className="num">{formatCount(newThisWeek)}</span> new this week
                     </>
                   )}
                 </>

@@ -8,6 +8,7 @@ interface JobsState {
   query: string;
   jobs: Job[];
   total: number;
+  newLast7Days: number;
   page: number;
   hasMore: boolean;
   status: 'loading' | 'ready' | 'error';
@@ -20,7 +21,7 @@ interface JobsState {
 let cachedState: JobsState | null = null;
 
 function initialState(query: string): JobsState {
-  return { query, jobs: [], total: 0, page: 0, hasMore: false, status: 'loading', loadingMore: false, error: null };
+  return { query, jobs: [], total: 0, newLast7Days: 0, page: 0, hasMore: false, status: 'loading', loadingMore: false, error: null };
 }
 
 function errorText(err: unknown): string {
@@ -56,7 +57,7 @@ export function useJobs(filterQuery: string) {
 
     fetchJobs(params.toString(), controller.signal)
       .then((res) =>
-        setState({ query: filterQuery, jobs: res.jobs, total: res.total, page: 1, hasMore: res.hasMore, status: 'ready', loadingMore: false, error: null }),
+        setState({ query: filterQuery, jobs: res.jobs, total: res.total, newLast7Days: res.newLast7Days, page: 1, hasMore: res.hasMore, status: 'ready', loadingMore: false, error: null }),
       )
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -80,7 +81,7 @@ export function useJobs(filterQuery: string) {
           if (s.query !== filterQuery) return s;
           // Guard against duplicates if new jobs shifted page boundaries.
           const seen = new Set(s.jobs.map((j) => j.id));
-          return { ...s, jobs: [...s.jobs, ...res.jobs.filter((j) => !seen.has(j.id))], total: res.total, page: res.page, hasMore: res.hasMore, loadingMore: false };
+          return { ...s, jobs: [...s.jobs, ...res.jobs.filter((j) => !seen.has(j.id))], total: res.total, newLast7Days: res.newLast7Days, page: res.page, hasMore: res.hasMore, loadingMore: false };
         }),
       )
       .catch((err: unknown) => {
