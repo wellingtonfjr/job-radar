@@ -122,6 +122,12 @@ frontend the API serves; default `../frontend/dist`) and `CORS_ORIGIN` (unset
 by default: the UI is same-origin, so no other site may read the API). For a
 production frontend build, set `VITE_API_URL` if the API isn't same-origin.
 
+After each ingestion cycle, jobs closed more than `PRUNE_AFTER_DAYS` (default
+90) ago and source runs started that long ago are deleted, so the database
+doesn't grow forever; `0` keeps everything. A closed job is kept while another
+open job is the same opening (same fingerprint), and each source's latest run
+is always kept. SQLite reuses the freed space, so no `VACUUM` is run.
+
 `npm run ingest` runs only the sources that are due, then resolves direct
 employer links (`--no-resolve` skips that; `npm run resolve` does only that). Pass `--force` to ignore
 intervals, and source ids to limit the run (`npm run ingest -- --force lever`).
