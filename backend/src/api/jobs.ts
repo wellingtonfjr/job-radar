@@ -225,10 +225,19 @@ export function createJobsRouter(db: Db): Router {
       return;
     }
     const query = parsed.data;
-    const { where, params } = buildJobFilter(query, new Date());
+    const now = new Date();
+    const { where, params } = buildJobFilter(query, now);
     const from = "FROM jobs j LEFT JOIN companies c ON c.company_key = j.company_key";
 
-    const total = (db.prepare(`SELECT COUNT(*) AS n ${from} WHERE ${where}`).get(params) as { n: number }).n;
+    // Same 7-day rule as the stats endpoint, but scoped to the filters.
+    const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
+    const counts = db
+      .prepare(
+        `SELECT COUNT(*) AS total, SUM(COALESCE(j.posted_at, j.first_seen_at) >= @weekAgo) AS newLast7Days
+         ${from} WHERE ${where}`,
+      )
+      .get({ ...params, weekAgo }) as { total: number; newLast7Days: number | null };
+    const total = counts.total;
     const rows = db
       .prepare(
         `SELECT ${LIST_COLUMNS} ${from} WHERE ${where}
@@ -240,6 +249,7 @@ export function createJobsRouter(db: Db): Router {
     res.json({
       jobs: rows.map(rowToJob),
       total,
+      newLast7Days: counts.newLast7Days ?? 0,
       page: query.page,
       pageSize: query.pageSize,
       hasMore: query.page * query.pageSize < total,

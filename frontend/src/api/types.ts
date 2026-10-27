@@ -54,6 +54,8 @@ export interface JobDetail extends Job {
 export interface JobsResponse {
   jobs: Job[];
   total: number;
+  /** How many of the matching roles were posted in the last 7 days. */
+  newLast7Days: number;
   page: number;
   pageSize: number;
   hasMore: boolean;

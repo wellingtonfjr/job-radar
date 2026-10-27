@@ -37,7 +37,9 @@ describe('App', () => {
         if (url.startsWith('/api/jobs')) {
           const q = new URL(url, 'http://x').searchParams;
           const filtered = q.get('category') ? jobs.filter((j) => j.category === q.get('category')) : jobs;
-          return jsonResponse({ jobs: filtered, total: filtered.length, page: 1, pageSize: 20, hasMore: false });
+          // The filtered count (0) differs from the site-wide one in stats (1).
+          const newLast7Days = q.get('category') ? 0 : 1;
+          return jsonResponse({ jobs: filtered, total: filtered.length, newLast7Days, page: 1, pageSize: 20, hasMore: false });
         }
         return jsonResponse({ error: 'Not found' }, 404);
       }),
@@ -59,6 +61,16 @@ describe('App', () => {
     expect(screen.queryByText('Senior Frontend Engineer')).not.toBeInTheDocument();
     expect(window.location.search).toBe('?category=design');
     expect(requests.some((r) => r.includes('category=design'))).toBe(true);
+  });
+
+  it('counts new roles within the filters in the header', async () => {
+    render(<App />);
+    const summary = await screen.findByText(/verified open/);
+    expect(summary).toHaveTextContent('2 verified open · 1 new this week');
+
+    const sidebar = screen.getByRole('complementary', { name: 'Filters' });
+    await userEvent.click(await within(sidebar).findByRole('checkbox', { name: /Design/ }));
+    expect(await screen.findByText(/matching/)).toHaveTextContent('1 matching · 0 new this week');
   });
 
   it('opens the full detail page on narrow screens and goes back', async () => {

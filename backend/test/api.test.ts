@@ -108,6 +108,15 @@ describe("GET /api/jobs", () => {
     expect(detail.body.applyMethod).toBe("ats-discovery");
   });
 
+  it("counts the matching roles that are new this week", async () => {
+    const all = await get("/api/jobs");
+    expect(all.body).toMatchObject({ total: 6, newLast7Days: 3 });
+
+    // BR matches two recent roles and the two old board listings.
+    const filtered = await get("/api/jobs?country=br");
+    expect(filtered.body).toMatchObject({ total: 4, newLast7Days: 2 });
+  });
+
   it("rejects invalid filters with 400", async () => {
     const { status, body } = await get("/api/jobs?category=nope&country=Brazil");
     expect(status).toBe(400);
