@@ -1,8 +1,14 @@
 # Dependabot: weekly pull requests that keep dependencies and GitHub Actions
 # up to date. Each one runs through CI like any other PR; merging deploys.
 #
-# Minor and patch updates are grouped into one PR per folder to limit noise;
-# major updates come one by one, since they can need code changes.
+# Packages that must move together (a tool and its plugins) are grouped, so
+# their major updates arrive in one PR that can actually pass CI. Other minor
+# and patch updates are grouped per folder; other majors come one by one.
+#
+# Some majors are ignored on purpose, until their upgrade issue is done:
+# - Node (image) and @types/node: the types must match the Node version
+#   production runs, and CI pins it too (see #38).
+# - Express 5 needs code changes (see #39).
 
 version: 2
 updates:
@@ -11,6 +17,13 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: express
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/express"
+        update-types: ["version-update:semver-major"]
     groups:
       backend-minor-and-patch:
         update-types: [minor, patch]
@@ -20,7 +33,15 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    # The first group a package matches wins, so the tool families come first.
     groups:
+      eslint:
+        patterns: ["eslint", "@eslint/*", "eslint-plugin-*", "typescript-eslint", "globals"]
+      vite:
+        patterns: ["vite", "@vitejs/*", "vitest", "@vitest/*"]
       frontend-minor-and-patch:
         update-types: [minor, patch]
 
@@ -38,3 +59,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
