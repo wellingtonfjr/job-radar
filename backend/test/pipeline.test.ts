@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../src/db/index.js";
-import { runIngestion } from "../src/ingestion/pipeline.js";
+import { pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
 import { fakeSource, rawJob } from "./helpers.js";
 
 const T0 = new Date("2026-10-15T12:00:00Z");
@@ -203,5 +203,73 @@ describe("runIngestion", () => {
     const [summary] = await runIngestion(db, [broken], { staleAfterDays: 30, now: () => T0 });
     expect(summary).toMatchObject({ status: "error", errors: [{ feed: "*", error: "boom" }] });
     expect(db.prepare("SELECT status FROM source_runs").get()).toEqual({ status: "error" });
+  });
+});
+
+describe("pruneOldRows", () => {
+  let db: Db;
+  const daysLater = (d: number) => hoursLater(d * 24);
+  const allIds = () => (db.prepare("SELECT id FROM jobs ORDER BY id").all() as { id: string }[]).map((r) => r.id);
+  beforeEach(() => {
+    db = openDb(":memory:");
+  });
+
+  /** ats:old closes at T0+2h, ats:recent at day 80; ats:open stays open. */
+  async function seed(): Promise<void> {
+    const ats = fakeSource("ats");
+    const feed = (...ids: string[]) => ({
+      results: [{ feed: "acme", complete: true, jobs: ids.map((id) => rawJob({ externalId: id, title: `Role ${id}` })) }],
+      errors: [],
+    });
+    ats.respond(feed("old", "recent", "open"));
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    ats.respond(feed("recent", "open"));
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    ats.respond(feed("open"));
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => daysLater(80) });
+  }
+
+  it("deletes only jobs closed more than N days ago", async () => {
+    await seed();
+    expect(pruneOldRows(db, daysLater(91), 90).jobs).toBe(1);
+    expect(allIds()).toEqual(["ats:open", "ats:recent"]);
+    expect(openIds(db)).toEqual(["ats:open"]);
+  });
+
+  it("keeps a closed job while an open job shares its fingerprint", async () => {
+    const ats = fakeSource("ats");
+    const agg = fakeSource("agg", "aggregator");
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1", title: "Backend Engineer" })] }], errors: [] });
+    agg.respond({ results: [{ feed: "all", complete: true, jobs: [rawJob({ externalId: "9", title: "Backend Engineer" })] }], errors: [] });
+    await runIngestion(db, [ats, agg], { staleAfterDays: 30, now: () => T0 });
+
+    // The ATS copy closes; the aggregator copy of the same opening stays open.
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [] }], errors: [] });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(openIds(db)).toEqual(["agg:9"]);
+
+    expect(pruneOldRows(db, daysLater(100), 90).jobs).toBe(0);
+    expect(allIds()).toEqual(["agg:9", "ats:1"]);
+  });
+
+  it("deletes source runs older than N days but keeps each source's latest", async () => {
+    await seed();
+    const runs = () => (db.prepare("SELECT source, started_at FROM source_runs ORDER BY id").all() as { started_at: string }[]).map((r) => r.started_at);
+    expect(runs()).toHaveLength(3);
+
+    // The T0 and T0+2h runs are past 90 days; the day-80 run is not.
+    expect(pruneOldRows(db, daysLater(91), 90).sourceRuns).toBe(2);
+    expect(runs()).toEqual([daysLater(80).toISOString()]);
+
+    // Even once it is old, the source's last run stays (the stats show it).
+    expect(pruneOldRows(db, daysLater(400), 90).sourceRuns).toBe(0);
+    expect(runs()).toHaveLength(1);
+  });
+
+  it("does nothing when disabled with 0", async () => {
+    await seed();
+    expect(pruneOldRows(db, daysLater(400), 0)).toEqual({ jobs: 0, sourceRuns: 0 });
+    expect(allIds()).toEqual(["ats:old", "ats:open", "ats:recent"]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM source_runs").get()).toEqual({ n: 3 });
   });
 });
