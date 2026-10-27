@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_SITE_URL } from "./web/seo.js";
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,4 +45,6 @@ export const config = {
    * mobile users share one public IP.
    */
   rateLimitPerMinute: intFromEnv("RATE_LIMIT_PER_MINUTE", DEFAULT_RATE_LIMIT_PER_MINUTE),
+  /** Public base URL, no trailing slash: used in the sitemap and link previews. */
+  siteUrl: (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, ""),
 };
