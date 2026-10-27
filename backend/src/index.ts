@@ -11,6 +11,7 @@ const app = createApp(db, {
   corsOrigin: config.corsOrigin,
   staticDir: config.frontendDist,
   rateLimitPerMinute: config.rateLimitPerMinute,
+  siteUrl: config.siteUrl,
 });
 const servesFrontend = fs.existsSync(path.join(config.frontendDist, "index.html"));
 
@@ -29,6 +30,7 @@ const scheduler =
         tickMinutes: config.schedulerTickMinutes,
         staleAfterDays: config.staleAfterDays,
         ingestIntervalHours: config.ingestIntervalHours,
+        pruneAfterDays: config.pruneAfterDays,
       })
     : null;
 if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");

@@ -1,5 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_SITE_URL } from "./web/seo.js";
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -9,6 +10,12 @@ export const DEFAULT_RATE_LIMIT_PER_MINUTE = 180;
 function intFromEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+/** Like intFromEnv, but 0 is a valid value (used to switch a feature off). */
+function nonNegativeIntFromEnv(name: string, fallback: number): number {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 export const config = {
@@ -33,6 +40,11 @@ export const config = {
    */
   staleAfterDays: intFromEnv("STALE_AFTER_DAYS", 30),
   /**
+   * Closed jobs and source-run history older than this many days are deleted
+   * after each ingestion cycle (see pruneOldRows). 0 keeps everything.
+   */
+  pruneAfterDays: nonNegativeIntFromEnv("PRUNE_AFTER_DAYS", 90),
+  /**
    * Another origin allowed to call the API from a browser (e.g. a separate
    * frontend). Unset by default: the UI is served from the same origin, so
    * no CORS header is needed, and other sites can't read the API.
@@ -44,4 +56,6 @@ export const config = {
    * mobile users share one public IP.
    */
   rateLimitPerMinute: intFromEnv("RATE_LIMIT_PER_MINUTE", DEFAULT_RATE_LIMIT_PER_MINUTE),
+  /** Public base URL, no trailing slash: used in the sitemap and link previews. */
+  siteUrl: (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, ""),
 };
