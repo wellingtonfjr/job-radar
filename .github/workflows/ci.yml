@@ -1,6 +1,9 @@
 # CI: on every pull request to master (and every push to master), check that
 # backend and frontend install, typecheck, pass their tests and build, on a
 # clean Linux machine with the same Node version as the Docker image.
+#
+# CD: on a push to master (a merged pull request), once both checks pass,
+# deploy to Fly.io (https://radar-de-vagas.fly.dev).
 
 name: CI
 
@@ -14,10 +17,11 @@ on:
 permissions:
   contents: read
 
-# A newer push to the same branch cancels the run still going for an older one.
+# On a pull request, a newer push cancels the run still going for an older one.
+# On master, runs are never cancelled, so a deploy is never cut off halfway.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:
@@ -56,3 +60,22 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  deploy:
+    needs: [backend, frontend]
+    # Only after a merge to master, never from a pull request.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # One deploy at a time: a newer one waits instead of cancelling.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      # Third-party action in a job with the deploy token: pinned by commit.
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1  # 1.6
+      - run: flyctl deploy --remote-only
+        env:
+          # App-scoped Fly deploy token, given to this step only.
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
