@@ -1,0 +1,77 @@
+# Freshness check: every 4 hours, make sure job ingestion is still running.
+#
+# Why this exists: the backend ingests jobs twice a day (every 12 hours). If
+# ingestion stalls (a crash in the loop, every source failing, a bad deploy),
+# the site keeps working and keeps serving older and older roles, and nothing
+# tells us. This check reads `lastUpdatedAt` from /api/stats and fails when it
+# is older than the threshold (26 hours by default: two missed runs, plus slack).
+#
+# Why not /health: /health only proves the process is alive, and that's on
+# purpose. Fly restarts a machine whose health check fails, so making /health
+# fail on stale data would restart a healthy machine without fixing anything.
+#
+# How the alert reaches us: when a scheduled run fails, GitHub e-mails the
+# person who last edited this file (the cron schedule). No secrets needed.
+#
+# To test by hand: Actions > Freshness > Run workflow, and set a tiny
+# max_age_hours (e.g. 0.01) to watch it fail.
+
+name: Freshness
+
+on:
+  schedule:
+    # Minute 17 instead of 0: GitHub's scheduler is busiest on the hour.
+    - cron: "17 */4 * * *"
+  workflow_dispatch:
+    inputs:
+      max_age_hours:
+        description: "Fail if the last ingestion is older than this many hours"
+        required: false
+        default: "26"
+
+# The automatic GitHub token isn't used; keep it read-only.
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that jobs were ingested recently
+        env:
+          STATS_URL: https://radar-de-vagas.fly.dev/api/stats
+          # A scheduled run has no inputs, so fall back to 26.
+          MAX_AGE_HOURS: ${{ inputs.max_age_hours || '26' }}
+        run: |
+          set -euo pipefail
+
+          # --retry also retries connection errors and 5xx answers, so a
+          # machine that is waking up or restarting doesn't raise an alert.
+          if ! stats=$(curl --fail --silent --show-error --max-time 30 \
+                            --retry 5 --retry-delay 10 --retry-all-errors \
+                            "$STATS_URL"); then
+            echo "::error::Could not fetch $STATS_URL"
+            exit 1
+          fi
+
+          # `|| true`: an answer that isn't JSON ends up here as "missing" too.
+          last=$(jq -r '.lastUpdatedAt // empty' <<<"$stats" 2>/dev/null || true)
+          if [ -z "$last" ]; then
+            echo "::error::$STATS_URL did not return a lastUpdatedAt"
+            exit 1
+          fi
+
+          # jq's date parser doesn't accept milliseconds, so drop them first.
+          age=$(jq -rn --arg t "$last" \
+            '(now - ($t | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)) / 3600')
+          # Compare the exact age; round only what we print (e.g. 3.2h).
+          shown=$(jq -rn --argjson age "$age" '$age * 10 | round / 10')
+
+          if jq -en --argjson age "$age" --argjson max "$MAX_AGE_HOURS" \
+               '$age > $max' >/dev/null; then
+            echo "::error::Jobs are stale: last ingestion was ${shown}h ago ($last), the limit is ${MAX_AGE_HOURS}h"
+            exit 1
+          fi
+
+          echo "OK: last ingestion was ${shown}h ago ($last), the limit is ${MAX_AGE_HOURS}h"
