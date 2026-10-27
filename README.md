@@ -1,9 +1,61 @@
 # job-radar
 
-Open roles, verified daily: job-radar scans employers' career pages and public
-job boards, normalizes every posting (category, level, work mode, salary,
-where you can work from, stack) and drops roles as soon as they're taken
-down. Every role links to the original posting.
+**Real, current job openings, straight from employers' career pages.**
+
+### 👉 [radar-de-vagas.fly.dev](https://radar-de-vagas.fly.dev)
+
+![job-radar: search and filters on the left, the list of open roles in the middle, a role preview on the right](docs/screenshot.png)
+
+Most job boards are full of listings that closed months ago, reposts of
+reposts, and "Apply" buttons that lead to yet another job board. job-radar
+reads employers' own hiring pages twice a day, keeps only roles that are
+still open, and sends you to the employer's own posting whenever it can.
+
+## What you can do
+
+- 🔎 **Search** thousands of open roles by title, company or stack
+  (`react senior`, `golang`, `nubank`).
+- 🌎 **Filter by where you can work from**: "Remote" is parsed into the
+  countries a role actually accepts, so *Brazil* shows remote roles open to
+  Brazil plus hybrid and on-site roles located there.
+- 💰 **Filter by salary and pay band**: salaries are read from the postings,
+  and each company gets a pay band (Top, High, Fair) from the salaries it
+  publishes, never a guess.
+- ⚡ **Apply at the source**: "Apply" opens the employer's own posting when it
+  can be found and verified, not an intermediate board.
+- 👀 **Preview without losing your place**: on wide screens, click a role to
+  read it beside the list.
+- ⭐ **Save roles and mark the ones you applied to**, with no account: it's
+  kept in your browser.
+- 🆕 **See what's new** since your last visit and in the last 7 days, for the
+  filters you're using.
+
+## How it works
+
+```
+Employer hiring pages                 Job boards
+(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Remotive)
+              │                                   │
+              └──────────── twice a day ──────────┘
+                               │
+          normalize: category, level, work mode, salary, countries, stack
+          deduplicate: one copy per opening, the employer's copy first
+          close: roles that left the employer's page
+          resolve: find the employer's own posting for board listings
+                               │
+                    SQLite ── API ── React UI
+```
+
+**Built with** Node 22, TypeScript, Express and SQLite (better-sqlite3) on
+the backend, and React 19 with Vite on the frontend (no UI or router
+libraries).
+
+**Runs on** one Docker image on [Fly.io](https://fly.io) (São Paulo region):
+the backend serves the API and the built frontend, with the database on a
+volume. Every pull request runs the checks in GitHub Actions, and merging to
+`master` deploys automatically, followed by a smoke test of the live site.
+
+## Under the hood
 
 The UI is a search-first workspace: filters in a sidebar (a full-screen sheet
 on phones), removable filter tokens, and on wide screens a list + preview
