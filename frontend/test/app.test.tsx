@@ -72,20 +72,27 @@ describe('App', () => {
     expect(await screen.findByText('Product Designer')).toBeInTheDocument();
   });
 
-  it('previews a role beside the list on wide screens', async () => {
+  it('opens a preview beside the list on wide screens only once a role is picked', async () => {
     stubMatchMedia(true);
     window.history.replaceState(null, '', '/?q=split');
     render(<App />);
-    const preview = screen.getByRole('complementary', { name: 'Role preview' });
-    expect(within(preview).getByText(/Select a role/)).toBeInTheDocument();
-
     await userEvent.click(await screen.findByRole('link', { name: 'Senior Frontend Engineer' }));
+    const preview = screen.getByRole('complementary', { name: 'Role preview' });
     expect(await within(preview).findByRole('heading', { level: 2, name: 'Senior Frontend Engineer' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
     expect(new URLSearchParams(window.location.search).get('job')).toBe('greenhouse:1');
 
     await userEvent.click(within(preview).getByRole('button', { name: 'Close preview' }));
-    expect(within(preview).getByText(/Select a role/)).toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'Role preview' })).not.toBeInTheDocument();
+    expect(new URLSearchParams(window.location.search).get('job')).toBeNull();
+  });
+
+  it('gives the list the full width on wide screens until a role is picked', async () => {
+    stubMatchMedia(true);
+    window.history.replaceState(null, '', '/?q=wide');
+    render(<App />);
+    expect(await screen.findByText('Senior Frontend Engineer')).toBeInTheDocument();
+    expect(screen.queryByRole('complementary', { name: 'Role preview' })).not.toBeInTheDocument();
   });
 
   it('shows a friendly message for roles that no longer exist', async () => {

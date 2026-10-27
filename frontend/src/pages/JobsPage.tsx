@@ -28,6 +28,8 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
   const selectedJob = new URLSearchParams(search).get('job');
   const listing = useJobs(serializeFilters(filters));
   const splitView = useMediaQuery(SPLIT_VIEW_QUERY);
+  // The preview pane only takes room once a role is picked; until then the list gets the full width.
+  const previewId = splitView ? selectedJob : null;
   const [sheetOpen, setSheetOpen] = useState(false);
 
   const applyFilters = (next: Filters) => navigate(listUrl(next, selectedJob), { replace: true });
@@ -55,7 +57,7 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
   const panel = <FilterPanel filters={filters} stats={stats} onChange={applyFilters} />;
 
   return (
-    <div className={`workspace${splitView ? ' workspace--split' : ''}`}>
+    <div className={`workspace${previewId ? ' workspace--split' : ''}`}>
       <aside className="sidebar" aria-label="Filters">
         {panel}
       </aside>
@@ -124,7 +126,7 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
                   job={job}
                   categoryName={categoryName(job.category)}
                   isNew={isNew(job)}
-                  selected={splitView && job.id === selectedJob}
+                  selected={job.id === previewId}
                   onSelect={splitView ? () => selectJob(job.id) : undefined}
                   onOpen={() => {
                     savedScrollY = window.scrollY;
@@ -150,9 +152,9 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
         )}
       </main>
 
-      {splitView && (
+      {previewId && (
         <aside className="preview" aria-label="Role preview">
-          <JobPreview id={selectedJob} stats={stats} onClose={() => selectJob(null)} />
+          <JobPreview key={previewId} id={previewId} stats={stats} onClose={() => selectJob(null)} />
         </aside>
       )}
     </div>

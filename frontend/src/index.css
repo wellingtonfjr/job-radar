@@ -900,48 +900,6 @@ input {
   text-decoration: none;
 }
 
-.preview-empty {
-  display: grid;
-  align-content: center;
-  gap: 20px;
-  height: 100%;
-  padding: 32px;
-  text-align: center;
-  background-image: radial-gradient(circle at center, transparent 0 60px, var(--line) 61px, transparent 62px 120px, var(--line) 121px, transparent 122px 180px, var(--line) 181px, transparent 182px);
-  background-position: center;
-  background-repeat: no-repeat;
-}
-.preview-empty__title {
-  margin: 0;
-  font-weight: 600;
-  color: var(--ink-2);
-}
-.preview-stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin: 0;
-}
-.preview-stats div {
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-}
-.preview-stats dt {
-  font-size: 0.6875rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.preview-stats dd {
-  margin: 0;
-  font-family: var(--mono);
-  font-size: 1.25rem;
-  font-weight: 700;
-}
-
 /* ---------- States ---------- */
 .skeleton {
   display: block;
