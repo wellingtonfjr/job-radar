@@ -30,6 +30,7 @@ const scheduler =
         tickMinutes: config.schedulerTickMinutes,
         staleAfterDays: config.staleAfterDays,
         ingestIntervalHours: config.ingestIntervalHours,
+        pruneAfterDays: config.pruneAfterDays,
       })
     : null;
 if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");

@@ -12,6 +12,12 @@ function intFromEnv(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
+/** Like intFromEnv, but 0 is a valid value (used to switch a feature off). */
+function nonNegativeIntFromEnv(name: string, fallback: number): number {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
 export const config = {
   port: intFromEnv("PORT", 3001),
   dbPath: process.env.DB_PATH ?? path.join(backendRoot, "data", "job-radar.db"),
@@ -33,6 +39,11 @@ export const config = {
    * days without being seen again (see ingestion/pipeline.ts).
    */
   staleAfterDays: intFromEnv("STALE_AFTER_DAYS", 30),
+  /**
+   * Closed jobs and source-run history older than this many days are deleted
+   * after each ingestion cycle (see pruneOldRows). 0 keeps everything.
+   */
+  pruneAfterDays: nonNegativeIntFromEnv("PRUNE_AFTER_DAYS", 90),
   /**
    * Another origin allowed to call the API from a browser (e.g. a separate
    * frontend). Unset by default: the UI is served from the same origin, so
