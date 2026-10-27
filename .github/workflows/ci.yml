@@ -79,3 +79,12 @@ jobs:
         env:
           # App-scoped Fly deploy token, given to this step only.
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # `flyctl deploy` can finish while the site is down, so check it answers.
+      # Retries cover the few seconds the single machine takes to restart.
+      - name: Smoke test
+        run: |
+          site=https://radar-de-vagas.fly.dev
+          check="curl --fail --silent --show-error --retry 10 --retry-delay 6 --retry-all-errors --max-time 10"
+          $check "$site/health"
+          # `/` must serve the app itself, which catches a wrong image.
+          $check "$site/" | grep --quiet '<div id="root">'
