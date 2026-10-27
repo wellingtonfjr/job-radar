@@ -1,5 +1,8 @@
 import type { FormEvent } from 'react';
+import { useRoleMarks } from '../hooks/useRoleMarks';
 import { formatRelative } from '../lib/format';
+import { SAVED_PATH, useLocation } from '../lib/router';
+import { savedRoles } from '../lib/savedRoles';
 import { Icon } from './Icon';
 import { Link } from './Link';
 
@@ -11,6 +14,8 @@ interface TopBarProps {
 }
 
 export function TopBar({ lastUpdatedAt, search, onSearchChange, onSearchSubmit }: TopBarProps) {
+  const savedCount = savedRoles(useRoleMarks()).length;
+  const onSavedPage = useLocation().pathname.startsWith(SAVED_PATH);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onSearchSubmit();
@@ -35,13 +40,25 @@ export function TopBar({ lastUpdatedAt, search, onSearchChange, onSearchSubmit }
             /
           </kbd>
         </form>
-        {lastUpdatedAt && (
-          <a className="live" href="#sources" title="When the sources were last checked">
-            <span className="live__dot" aria-hidden="true" />
-            <span className="live__label">Live</span>
-            <span className="live__time">· {formatRelative(lastUpdatedAt)}</span>
-          </a>
-        )}
+        <div className="topbar__end">
+          <Link
+            href={SAVED_PATH}
+            className="saved-link"
+            aria-label={`Saved roles (${savedCount})`}
+            aria-current={onSavedPage ? 'page' : undefined}
+          >
+            <Icon name={savedCount > 0 ? 'star' : 'star-outline'} size={16} />
+            <span className="saved-link__label">Saved</span>
+            {savedCount > 0 && <span className="count-dot">{savedCount}</span>}
+          </Link>
+          {lastUpdatedAt && (
+            <a className="live" href="#sources" title="When the sources were last checked">
+              <span className="live__dot" aria-hidden="true" />
+              <span className="live__label">Live</span>
+              <span className="live__time">· {formatRelative(lastUpdatedAt)}</span>
+            </a>
+          )}
+        </div>
       </div>
     </header>
   );

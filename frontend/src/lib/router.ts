@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
 
 /**
- * Minimal History-API router: the app has two routes (list and detail), so a
- * routing dependency isn't worth it. `navigate` pushes state and notifies
+ * Minimal History-API router: the app has three routes (list, detail and
+ * saved), so a routing dependency isn't worth it. `navigate` pushes state and notifies
  * subscribers; back/forward arrive via `popstate`.
  */
 const NAVIGATE_EVENT = 'job-radar:navigate';
@@ -33,10 +33,13 @@ export function navigate(to: string, { replace = false } = {}): void {
   window.dispatchEvent(new Event(NAVIGATE_EVENT));
 }
 
-export type Route = { name: 'jobs' } | { name: 'job'; id: string } | { name: 'not-found' };
+export type Route = { name: 'jobs' } | { name: 'job'; id: string } | { name: 'saved' } | { name: 'not-found' };
+
+export const SAVED_PATH = '/saved';
 
 export function matchRoute(pathname: string): Route {
   if (pathname === '/' || pathname === '') return { name: 'jobs' };
+  if (pathname === SAVED_PATH || pathname === `${SAVED_PATH}/`) return { name: 'saved' };
   const match = pathname.match(/^\/jobs\/([^/]+)\/?$/);
   if (match?.[1]) return { name: 'job', id: decodeURIComponent(match[1]) };
   return { name: 'not-found' };
