@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^13.0.3",
     "express": "^4.22.3",
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
