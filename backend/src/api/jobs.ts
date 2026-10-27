@@ -221,7 +221,7 @@ export function createJobsRouter(db: Db): Router {
   router.get("/", (req, res) => {
     const parsed = querySchema.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: "Invalid query parameters", details: parsed.error.flatten().fieldErrors });
+      res.status(400).json({ error: "Invalid query parameters", details: z.flattenError(parsed.error).fieldErrors });
       return;
     }
     const query = parsed.data;

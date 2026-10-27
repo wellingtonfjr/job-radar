@@ -2,7 +2,7 @@ import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
 import type { SourceAdapter } from "../sources/types.js";
-import { runIngestion, type SourceRunSummary } from "./pipeline.js";
+import { pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary } from "./pipeline.js";
 
 export interface Scheduler {
   stop(): void;
@@ -21,6 +21,11 @@ export function logResolve(summary: ResolveSummary): void {
   );
 }
 
+export function logPrune(summary: PruneSummary, afterDays: number): void {
+  if (afterDays <= 0) return;
+  console.log(`[ingest] pruned (older than ${afterDays}d): closed jobs=${summary.jobs} source runs=${summary.sourceRuns}`);
+}
+
 function logSummaries(summaries: SourceRunSummary[]): void {
   for (const s of summaries) {
     if (s.status === "skipped") continue;
@@ -37,7 +42,12 @@ function logSummaries(summaries: SourceRunSummary[]): void {
 export function startScheduler(
   db: Db,
   sources: SourceAdapter[],
-  { tickMinutes, staleAfterDays, ingestIntervalHours }: { tickMinutes: number; staleAfterDays: number; ingestIntervalHours: number },
+  {
+    tickMinutes,
+    staleAfterDays,
+    ingestIntervalHours,
+    pruneAfterDays,
+  }: { tickMinutes: number; staleAfterDays: number; ingestIntervalHours: number; pruneAfterDays: number },
 ): Scheduler {
   let running: Promise<void> | null = null;
 
@@ -46,6 +56,8 @@ export function startScheduler(
     running = runIngestion(db, sources, { staleAfterDays, minIntervalMinutes: ingestIntervalHours * 60 })
       .then((summaries) => {
         logSummaries(summaries);
+        // Housekeeping only after a cycle that actually fetched something.
+        if (summaries.some((s) => s.status !== "skipped")) logPrune(pruneOldRows(db, new Date(), pruneAfterDays), pruneAfterDays);
         return summaries;
       })
       // Then point board listings at the employers' own postings.
