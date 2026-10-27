@@ -1,142 +1,84 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import './App.css';
-import { fetchJobs } from './api';
-import { FilterPanel } from './components/FilterPanel';
-import { JobCard } from './components/JobCard';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from './components/Link';
+import { SourcesFooter } from './components/SourcesFooter';
+import { StatusMessage } from './components/StatusMessage';
+import { TopBar } from './components/TopBar';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
-import type { Job } from './types';
-import { getLastVisit, setLastVisitNow } from './utils/lastVisit';
-import { readFiltersFromUrl, writeFiltersToUrl } from './utils/urlFilters';
+import { useStats } from './hooks/useStats';
+import { listUrl, parseFilters } from './lib/filters';
+import { takeLastVisit } from './lib/lastVisit';
+import { matchRoute, navigate, useLocation } from './lib/router';
+import { JobDetailPage } from './pages/JobDetailPage';
+import { JobsPage } from './pages/JobsPage';
 
-const DEBOUNCE_MS = 350;
+const SEARCH_DEBOUNCE_MS = 350;
 
-function App() {
-  const initialFilters = useMemo(() => readFiltersFromUrl(), []);
+export default function App() {
+  const { pathname, search } = useLocation();
+  const route = matchRoute(pathname);
+  const stats = useStats();
+  // Read once per page load: "New" means first seen since the previous visit.
+  const [lastVisit] = useState(takeLastVisit);
 
-  const [keywordInput, setKeywordInput] = useState(initialFilters.keyword);
-  const [locationInput, setLocationInput] = useState(initialFilters.location);
-  const [remoteOnly, setRemoteOnly] = useState(initialFilters.remoteOnly);
-  const [source, setSource] = useState(initialFilters.source);
-  const [baseCountries, setBaseCountries] = useState(initialFilters.baseCountries);
+  // The search box lives in the top bar on every page. On the list it
+  // filters as you type; elsewhere it searches on submit.
+  const urlQuery = route.name === 'jobs' ? parseFilters(search).q : '';
+  const [searchInput, setSearchInput] = useState(urlQuery);
+  const [syncedQuery, setSyncedQuery] = useState(urlQuery);
+  if (urlQuery !== syncedQuery) {
+    setSyncedQuery(urlQuery);
+    if (urlQuery.trim() !== searchInput.trim()) setSearchInput(urlQuery);
+  }
 
-  const debouncedKeyword = useDebouncedValue(keywordInput, DEBOUNCE_MS);
-  const debouncedLocation = useDebouncedValue(locationInput, DEBOUNCE_MS);
-
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Snapshot the previous visit's timestamp once, then immediately stamp "now"
-  // so badges naturally clear on the next visit/reload. Guarded so this only
-  // ever runs once even under StrictMode's double-invoked mount effects.
-  const lastVisitRef = useRef<string | null>(null);
-  const hasCapturedLastVisit = useRef(false);
-  const [lastVisitReady, setLastVisitReady] = useState(false);
+  const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
+  const latest = useRef({ route, search });
+  latest.current = { route, search };
   useEffect(() => {
-    if (hasCapturedLastVisit.current) return;
-    hasCapturedLastVisit.current = true;
-    lastVisitRef.current = getLastVisit();
-    setLastVisitNow();
-    setLastVisitReady(true);
-  }, []);
+    const { route: current, search: currentSearch } = latest.current;
+    if (current.name !== 'jobs') return;
+    const filters = parseFilters(currentSearch);
+    if (debouncedSearch.trim() === filters.q.trim()) return;
+    navigate(listUrl({ ...filters, q: debouncedSearch }, new URLSearchParams(currentSearch).get('job')), { replace: true });
+  }, [debouncedSearch]);
 
-  const activeFilters = useMemo(
-    () => ({
-      keyword: debouncedKeyword,
-      location: debouncedLocation,
-      remoteOnly,
-      source,
-      baseCountries,
-    }),
-    [debouncedKeyword, debouncedLocation, remoteOnly, source, baseCountries],
-  );
-
-  useEffect(() => {
-    writeFiltersToUrl(activeFilters);
-
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-
-    fetchJobs(activeFilters, controller.signal)
-      .then((res) => {
-        setJobs(res.jobs);
-        setTotal(res.total);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
-        setJobs([]);
-        setTotal(0);
-        setError(err instanceof Error ? err.message : 'Something went wrong while loading jobs.');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [activeFilters]);
-
-  const isNewJob = (job: Job): boolean => {
-    if (!lastVisitReady || !lastVisitRef.current) return false;
-    return new Date(job.firstSeenAt).getTime() > new Date(lastVisitRef.current).getTime();
+  const submitSearch = () => {
+    const filters = route.name === 'jobs' ? parseFilters(search) : parseFilters('');
+    navigate(listUrl({ ...filters, q: searchInput }), { replace: route.name === 'jobs' });
   };
 
+  // "/" focuses the search, like most search-first tools.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (event.key !== '/' || target.closest('input, textarea, select, [contenteditable]')) return;
+      event.preventDefault();
+      document.querySelector<HTMLInputElement>('.search input')?.focus();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>job-radar</h1>
-        <p className="app-subtitle">
-          Open roles aggregated from Greenhouse, Lever, Remotive and Arbeitnow.
-        </p>
-      </header>
-
-      <FilterPanel
-        keyword={keywordInput}
-        onKeywordChange={setKeywordInput}
-        location={locationInput}
-        onLocationChange={setLocationInput}
-        remoteOnly={remoteOnly}
-        onRemoteOnlyChange={setRemoteOnly}
-        source={source}
-        onSourceChange={setSource}
-        baseCountries={baseCountries}
-        onBaseCountriesChange={setBaseCountries}
+    <>
+      <a href="#main" className="skip-link">
+        Skip to results
+      </a>
+      <TopBar
+        lastUpdatedAt={stats?.lastUpdatedAt}
+        search={searchInput}
+        onSearchChange={setSearchInput}
+        onSearchSubmit={submitSearch}
       />
-
-      <main className="job-results">
-        {loading && <div className="state-message">Loading jobs...</div>}
-
-        {!loading && error && (
-          <div className="state-message state-error">
-            <strong>Couldn't load jobs.</strong>
-            <span>{error}</span>
-          </div>
-        )}
-
-        {!loading && !error && jobs.length === 0 && (
-          <div className="state-message">No jobs match your filters.</div>
-        )}
-
-        {!loading && !error && jobs.length > 0 && (
-          <>
-            <div className="results-summary">
-              Showing {jobs.length} of {total} job{total === 1 ? '' : 's'}
-            </div>
-            <div className="job-grid">
-              {jobs.map((job) => (
-                <JobCard key={job.id} job={job} isNew={isNewJob(job)} />
-              ))}
-            </div>
-          </>
-        )}
-      </main>
-
-      <footer className="app-footer">
-        <span>Data from public job-board APIs, refreshed by the job-radar backend.</span>
-      </footer>
-    </div>
+      {route.name === 'jobs' && <JobsPage search={search} stats={stats} lastVisit={lastVisit} />}
+      {route.name === 'job' && <JobDetailPage key={route.id} id={route.id} stats={stats} />}
+      {route.name === 'not-found' && (
+        <main className="page" id="main">
+          <StatusMessage title="Page not found">
+            <Link href="/">Browse open roles</Link>
+          </StatusMessage>
+        </main>
+      )}
+      <SourcesFooter sources={stats?.sources} />
+    </>
   );
 }
-
-export default App;
