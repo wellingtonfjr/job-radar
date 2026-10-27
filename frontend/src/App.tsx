@@ -10,6 +10,7 @@ import { takeLastVisit } from './lib/lastVisit';
 import { matchRoute, navigate, useLocation } from './lib/router';
 import { JobDetailPage } from './pages/JobDetailPage';
 import { JobsPage } from './pages/JobsPage';
+import { SavedPage } from './pages/SavedPage';
 
 const SEARCH_DEBOUNCE_MS = 350;
 
@@ -71,6 +72,7 @@ export default function App() {
       />
       {route.name === 'jobs' && <JobsPage search={search} stats={stats} lastVisit={lastVisit} />}
       {route.name === 'job' && <JobDetailPage key={route.id} id={route.id} stats={stats} />}
+      {route.name === 'saved' && <SavedPage />}
       {route.name === 'not-found' && (
         <main className="page" id="main">
           <StatusMessage title="Page not found">
