@@ -294,6 +294,47 @@ export function recomputeCompanyTiers(db: Db): void {
   })();
 }
 
+export interface PruneSummary {
+  jobs: number;
+  sourceRuns: number;
+}
+
+/**
+ * Deletes jobs closed more than `afterDays` ago and source runs started more
+ * than `afterDays` ago, in one transaction. 0 disables pruning.
+ *
+ * Nothing references a job row by id: `canonical` is a flag recomputed from
+ * open rows only, the apply-link cache lives on the row itself, and
+ * `companies` / `ats_boards` are keyed by company. The only link between rows
+ * is the dedup `fingerprint`, so as a safeguard a closed job is kept while an
+ * open job shares its fingerprint. Each source's latest finished run is kept
+ * too, so /api/stats always has a "last run" to show.
+ *
+ * No VACUUM: SQLite reuses the freed pages for new rows, so the file stops
+ * growing instead of shrinking, and a VACUUM would rewrite the whole database
+ * (needing as much free disk again) while blocking the API.
+ */
+export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary {
+  if (afterDays <= 0) return { jobs: 0, sourceRuns: 0 };
+  const before = new Date(now.getTime() - afterDays * 86_400_000).toISOString();
+  return db.transaction(() => ({
+    jobs: db
+      .prepare(
+        `DELETE FROM jobs
+         WHERE closed_at IS NOT NULL AND closed_at < ?
+           AND NOT EXISTS (SELECT 1 FROM jobs o WHERE o.fingerprint = jobs.fingerprint AND o.closed_at IS NULL)`,
+      )
+      .run(before).changes,
+    sourceRuns: db
+      .prepare(
+        `DELETE FROM source_runs
+         WHERE started_at < ?
+           AND id NOT IN (SELECT MAX(id) FROM source_runs WHERE finished_at IS NOT NULL GROUP BY source)`,
+      )
+      .run(before).changes,
+  }))();
+}
+
 /**
  * Runs every due source (in parallel — they're different hosts), then the
  * post-processing that depends on the whole dataset.

@@ -1,9 +1,61 @@
 # job-radar
 
-Open roles, verified daily: job-radar scans employers' career pages and public
-job boards, normalizes every posting (category, level, work mode, salary,
-where you can work from, stack) and drops roles as soon as they're taken
-down. Every role links to the original posting.
+**Real, current job openings, straight from employers' career pages.**
+
+### 👉 [radar-de-vagas.fly.dev](https://radar-de-vagas.fly.dev)
+
+![job-radar: search and filters on the left, the list of open roles in the middle, a role preview on the right](docs/screenshot.png)
+
+Most job boards are full of listings that closed months ago, reposts of
+reposts, and "Apply" buttons that lead to yet another job board. job-radar
+reads employers' own hiring pages twice a day, keeps only roles that are
+still open, and sends you to the employer's own posting whenever it can.
+
+## What you can do
+
+- 🔎 **Search** thousands of open roles by title, company or stack
+  (`react senior`, `golang`, `nubank`).
+- 🌎 **Filter by where you can work from**: "Remote" is parsed into the
+  countries a role actually accepts, so *Brazil* shows remote roles open to
+  Brazil plus hybrid and on-site roles located there.
+- 💰 **Filter by salary and pay band**: salaries are read from the postings,
+  and each company gets a pay band (Top, High, Fair) from the salaries it
+  publishes, never a guess.
+- ⚡ **Apply at the source**: "Apply" opens the employer's own posting when it
+  can be found and verified, not an intermediate board.
+- 👀 **Preview without losing your place**: on wide screens, click a role to
+  read it beside the list.
+- ⭐ **Save roles and mark the ones you applied to**, with no account: it's
+  kept in your browser.
+- 🆕 **See what's new** since your last visit and in the last 7 days, for the
+  filters you're using.
+
+## How it works
+
+```
+Employer hiring pages                 Job boards
+(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Remotive)
+              │                                   │
+              └──────────── twice a day ──────────┘
+                               │
+          normalize: category, level, work mode, salary, countries, stack
+          deduplicate: one copy per opening, the employer's copy first
+          close: roles that left the employer's page
+          resolve: find the employer's own posting for board listings
+                               │
+                    SQLite ── API ── React UI
+```
+
+**Built with** Node 22, TypeScript, Express and SQLite (better-sqlite3) on
+the backend, and React 19 with Vite on the frontend (no UI or router
+libraries).
+
+**Runs on** one Docker image on [Fly.io](https://fly.io) (São Paulo region):
+the backend serves the API and the built frontend, with the database on a
+volume. Every pull request runs the checks in GitHub Actions, and merging to
+`master` deploys automatically, followed by a smoke test of the live site.
+
+## Under the hood
 
 The UI is a search-first workspace: filters in a sidebar (a full-screen sheet
 on phones), removable filter tokens, and on wide screens a list + preview
@@ -119,8 +171,16 @@ passed since its last run, so restarts don't cause extra fetching. Other setting
 `PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `SCHEDULER=off`, `RATE_LIMIT_PER_MINUTE`
 (default 180 API requests per visitor per minute), `FRONTEND_DIST` (built
 frontend the API serves; default `../frontend/dist`) and `CORS_ORIGIN` (unset
-by default: the UI is same-origin, so no other site may read the API). For a
+by default: the UI is same-origin, so no other site may read the API) and
+`SITE_URL` (public base URL used in `/sitemap.xml`, `/robots.txt` and role link
+previews; default `https://radar-de-vagas.fly.dev`). For a
 production frontend build, set `VITE_API_URL` if the API isn't same-origin.
+
+After each ingestion cycle, jobs closed more than `PRUNE_AFTER_DAYS` (default
+90) ago and source runs started that long ago are deleted, so the database
+doesn't grow forever; `0` keeps everything. A closed job is kept while another
+open job is the same opening (same fingerprint), and each source's latest run
+is always kept. SQLite reuses the freed space, so no `VACUUM` is run.
 
 `npm run ingest` runs only the sources that are due, then resolves direct
 employer links (`--no-resolve` skips that; `npm run resolve` does only that). Pass `--force` to ignore
