@@ -162,6 +162,15 @@ cd backend && npm run typecheck && npm test
 cd frontend && npm run lint && npm run typecheck && npm test && npm run build
 ```
 
+## Operations
+
+`/health` only says the process is alive. To notice when ingestion stops,
+the [Freshness](.github/workflows/freshness.yml) workflow runs every 4 hours,
+reads `lastUpdatedAt` from `/api/stats` and fails if it is more than 26 hours
+old (or the request fails). GitHub e-mails the person who last edited that
+workflow when a scheduled run fails. To try it by hand, run it from the
+Actions tab with a small `max_age_hours` (e.g. `0.01`), which should fail.
+
 ## Known limitations
 
 - Classification (category, seniority, stack) is rule-based, covering English
