@@ -1,9 +1,11 @@
 import type { Job } from '../api/types';
+import { useRoleMarks } from '../hooks/useRoleMarks';
 import { formatAge, formatSalary, locationChips } from '../lib/format';
 import { EMPLOYMENT_TYPE_LABELS, PAY_BAND_LABELS, SENIORITY_LABELS, WORKPLACE_LABELS } from '../lib/labels';
 import { jobPath } from '../lib/router';
 import { CompanyLogo } from './CompanyLogo';
 import { Link } from './Link';
+import { RoleMarkButtons } from './RoleMarkButtons';
 
 interface JobRowProps {
   job: Job;
@@ -19,6 +21,7 @@ interface JobRowProps {
 }
 
 export function JobRow({ job, categoryName, isNew, selected = false, onSelect, onOpen }: JobRowProps) {
+  const applied = Boolean(useRoleMarks()[job.id]?.appliedAt);
   const salary = formatSalary(job.salary);
   const age = formatAge(job.postedAt ?? job.firstSeenAt);
   const where = locationChips(job.locations, job.workplace, job.allowedCountries, 2).join(', ');
@@ -31,7 +34,9 @@ export function JobRow({ job, categoryName, isNew, selected = false, onSelect, o
   ].filter(Boolean);
 
   return (
-    <article className={`job-card${selected ? ' job-card--selected' : ''}`} aria-current={selected ? 'true' : undefined}>
+    <article
+      className={`job-card${selected ? ' job-card--selected' : ''}${applied ? ' job-card--applied' : ''}`}
+      aria-current={selected ? 'true' : undefined}>
       <CompanyLogo name={job.company} src={job.companyLogo} />
       <div className="job-card__body">
         <div className="job-card__company">
@@ -74,7 +79,8 @@ export function JobRow({ job, categoryName, isNew, selected = false, onSelect, o
         )}
       </div>
       <div className="job-card__meta">
-        {isNew && <span className="new-flag">New</span>}
+        {applied && <span className="applied-flag">Applied</span>}
+        {isNew && !applied && <span className="new-flag">New</span>}
         {age && <span className="age">{age.replace(' ago', '')}</span>}
         {!job.applyDirect && (
           <span className="via" title={`No employer posting found yet; applying goes through ${job.sourceName}`}>
@@ -82,6 +88,7 @@ export function JobRow({ job, categoryName, isNew, selected = false, onSelect, o
           </span>
         )}
       </div>
+      <RoleMarkButtons role={job} variant="compact" />
     </article>
   );
 }

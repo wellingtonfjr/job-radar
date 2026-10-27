@@ -5,6 +5,7 @@ import { jobPath } from '../lib/router';
 import { CompanyLogo } from './CompanyLogo';
 import { Icon } from './Icon';
 import { Link } from './Link';
+import { RoleMarkButtons } from './RoleMarkButtons';
 
 interface JobDetailViewProps {
   job: JobDetail;
@@ -102,6 +103,7 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
             <Icon name="external" size={16} />
           </a>
         )}
+        <RoleMarkButtons role={job} variant="full" />
         <div className="apply-notes">
           <p className="verified">
             <span className="live__dot" aria-hidden="true" />

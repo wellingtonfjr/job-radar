@@ -3,8 +3,8 @@ import { openDb } from "../db/index.js";
 import { SOURCES, findSource } from "../sources/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks } from "../resolve/resolver.js";
-import { runIngestion } from "./pipeline.js";
-import { logResolve } from "./scheduler.js";
+import { pruneOldRows, runIngestion } from "./pipeline.js";
+import { logPrune, logResolve } from "./scheduler.js";
 
 /**
  * CLI: `npm run ingest` runs every due source once;
@@ -38,6 +38,7 @@ async function main(): Promise<void> {
     console.table(
       summaries.map(({ errors, ...s }) => ({ ...s, errors: errors.length, firstError: errors[0] ? `${errors[0].feed}: ${errors[0].error}` : "" })),
     );
+    if (summaries.some((s) => s.status !== "skipped")) logPrune(pruneOldRows(db, new Date(), config.pruneAfterDays), config.pruneAfterDays);
   }
   if (resolve || resolveOnly) logResolve(await resolveApplyLinks(db, liveNet, { now: new Date(), discoveryBudget }));
   const open = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE closed_at IS NULL AND canonical = 1").get() as { n: number };

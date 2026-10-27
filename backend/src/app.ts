@@ -7,6 +7,7 @@ import { DEFAULT_RATE_LIMIT_PER_MINUTE } from "./config.js";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import type { Db } from "./db/index.js";
+import { DEFAULT_SITE_URL, cachedSitemap, findOpenJob, renderJobPage, robotsTxt } from "./web/seo.js";
 
 /**
  * Paths ending in one of these are files. If they reached the SPA fallback
@@ -33,9 +34,14 @@ export interface AppOptions {
   staticDir?: string;
   /** API requests allowed per visitor per minute. */
   rateLimitPerMinute?: number;
+  /** Public base URL (no trailing slash) for the sitemap and link previews. */
+  siteUrl?: string;
 }
 
-export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE }: AppOptions = {}) {
+/** A role page's path; the id is URL-encoded (see frontend/src/lib/router.ts). */
+const JOB_PAGE = /^\/jobs\/([^/]+)$/;
+
+export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE, siteUrl = DEFAULT_SITE_URL }: AppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
 
@@ -98,6 +104,18 @@ export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = 
     res.json({ status: "ok" });
   });
 
+  // For crawlers. Outside /api (not rate-limited), so the sitemap is built at
+  // most once an hour and shared; its Cache-Control matches.
+  const sitemap = cachedSitemap(db, siteUrl);
+  app.get("/robots.txt", (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.type("text/plain").send(robotsTxt(siteUrl));
+  });
+  app.get("/sitemap.xml", (_req, res) => {
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.type("application/xml").send(sitemap());
+  });
+
   app.use("/api", apiLimiter);
   app.use("/api/jobs", createJobsRouter(db));
   app.use("/api/stats", createStatsRouter(db));
@@ -125,11 +143,27 @@ export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = 
 
     // SPA fallback: React pages (/, /jobs/:id …) aren't files, so any other
     // GET gets index.html and the client-side router takes it from there.
+    // An open role's page gets its own title and preview tags, since crawlers
+    // and link previews don't run JavaScript.
+    const indexHtml = fs.readFileSync(path.join(staticDir, "index.html"), "utf8");
     app.get("*", (req, res, next) => {
       if (FILE_EXTENSION.test(req.path)) return next();
       res.setHeader("Cache-Control", "no-cache");
-      res.sendFile(path.join(staticDir, "index.html"));
+      res.type("html").send(renderPage(req.path));
     });
+
+    const renderPage = (pagePath: string): string => {
+      const match = JOB_PAGE.exec(pagePath);
+      if (!match) return indexHtml;
+      let id: string;
+      try {
+        id = decodeURIComponent(match[1] as string);
+      } catch {
+        return indexHtml;
+      }
+      const job = findOpenJob(db, id);
+      return job ? renderJobPage(indexHtml, job, siteUrl) : indexHtml;
+    };
   }
 
   const onError: ErrorRequestHandler = (err, _req, res, _next) => {
