@@ -11,6 +11,7 @@ const app = createApp(db, {
   corsOrigin: config.corsOrigin,
   staticDir: config.frontendDist,
   rateLimitPerMinute: config.rateLimitPerMinute,
+  siteUrl: config.siteUrl,
 });
 const servesFrontend = fs.existsSync(path.join(config.frontendDist, "index.html"));
 
