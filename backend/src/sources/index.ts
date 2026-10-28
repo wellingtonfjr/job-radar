@@ -5,7 +5,6 @@ import { himalayasSource } from "./himalayas.js";
 import { inhireSource } from "./inhire.js";
 import { jobicySource } from "./jobicy.js";
 import { leverSource } from "./lever.js";
-import { remotiveSource } from "./remotive.js";
 import type { SourceAdapter } from "./types.js";
 
 /** Every source, ATS first (their postings win de-duplication). */
@@ -17,7 +16,6 @@ export const SOURCES: SourceAdapter[] = [
   himalayasSource,
   jobicySource,
   arbeitnowSource,
-  remotiveSource,
 ];
 
 export function findSource(id: string): SourceAdapter | undefined {
