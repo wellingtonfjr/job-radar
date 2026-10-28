@@ -8,7 +8,6 @@
 # Some majors are ignored on purpose, until their upgrade issue is done:
 # - Node (image) and @types/node: the types must match the Node version
 #   production runs, and CI pins it too (see #38).
-# - Express 5 needs code changes (see #39).
 
 version: 2
 updates:
@@ -19,10 +18,6 @@ updates:
     open-pull-requests-limit: 5
     ignore:
       - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: express
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@types/express"
         update-types: ["version-update:semver-major"]
     groups:
       backend-minor-and-patch:
