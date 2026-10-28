@@ -46,7 +46,7 @@ Employer hiring pages                 Job boards
                     SQLite ── API ── React UI
 ```
 
-**Built with** Node 22, TypeScript, Express and SQLite (better-sqlite3) on
+**Built with** Node 26 (LTS), TypeScript, Express and SQLite (better-sqlite3) on
 the backend, and React 19 with Vite on the frontend (no UI or router
 libraries).
 
@@ -146,7 +146,7 @@ that run.
 ## Structure
 
 ```
-backend/   Node 20+ · TypeScript · Express · SQLite (better-sqlite3)
+backend/   Node 26 · TypeScript · Express · SQLite (better-sqlite3)
   src/sources/     one adapter per source (fetch + map only)
   src/normalize/   category, seniority, employment type, salary, location, skills, dedup keys
   src/ingestion/   pipeline (upsert/close/retire/dedup/tiers), scheduler, CLI

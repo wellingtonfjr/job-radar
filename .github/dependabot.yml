@@ -5,9 +5,10 @@
 # their major updates arrive in one PR that can actually pass CI. Other minor
 # and patch updates are grouped per folder; other majors come one by one.
 #
-# Some majors are ignored on purpose, until their upgrade issue is done:
-# - Node (image) and @types/node: the types must match the Node version
-#   production runs, and CI pins it too (see #38).
+# Some majors are ignored on purpose:
+# - Node (image) and @types/node: both track the Node LTS line chosen in #38
+#   (Node 26). The types must match the Node version production runs, and CI
+#   pins it too, so the runtime is upgraded deliberately, all in one PR.
 
 version: 2
 updates:
