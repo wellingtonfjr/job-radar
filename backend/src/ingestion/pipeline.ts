@@ -226,21 +226,38 @@ export function retireStaleJobs(db: Db, now: Date, staleAfterDays: number): numb
 }
 
 /**
- * Hides cross-source copies of the same opening: a job is non-canonical when
- * another *source* has it open with a better rank (the employer's own ATS
- * beats aggregators). Same-source matches are left alone — one company
- * posting "Account Executive" in five cities is five real openings.
+ * ATS postings older than this are evergreen "talent pools" (some Lever
+ * boards keep the same posting open for years), not current openings.
  */
-export function recomputeCanonical(db: Db): void {
-  db.exec(`
-    UPDATE jobs SET canonical = closed_at IS NULL AND NOT EXISTS (
-      SELECT 1 FROM jobs o
-      WHERE o.fingerprint = jobs.fingerprint
-        AND o.source != jobs.source
-        AND o.closed_at IS NULL
-        AND (o.source_rank < jobs.source_rank OR (o.source_rank = jobs.source_rank AND o.source < jobs.source))
-    )
-  `);
+export const EVERGREEN_AFTER_DAYS = 180;
+
+/**
+ * Decides which open jobs the default listing shows (`canonical = 1`); the
+ * listing, its counts, /api/stats, the sitemap and RSS all filter on it.
+ *
+ * - Cross-source copies of the same opening are hidden: a job is
+ *   non-canonical when another *source* has it open with a better rank (the
+ *   employer's own ATS beats aggregators). Same-source matches are left
+ *   alone — one company posting "Account Executive" in five cities is five
+ *   real openings.
+ * - Evergreen ATS postings (posted over EVERGREEN_AFTER_DAYS ago) are hidden.
+ *   They stay open and still hide their aggregator copies, so the same pool
+ *   doesn't resurface through a job board; the `source` filter still shows them.
+ *   Aggregators are left alone: their feeds only carry recent postings.
+ */
+export function recomputeCanonical(db: Db, now: Date): void {
+  const evergreenBefore = new Date(now.getTime() - EVERGREEN_AFTER_DAYS * 86_400_000).toISOString();
+  db.prepare(
+    `UPDATE jobs SET canonical = closed_at IS NULL
+      AND NOT (source_rank = @atsRank AND COALESCE(posted_at, first_seen_at) < @evergreenBefore)
+      AND NOT EXISTS (
+        SELECT 1 FROM jobs o
+        WHERE o.fingerprint = jobs.fingerprint
+          AND o.source != jobs.source
+          AND o.closed_at IS NULL
+          AND (o.source_rank < jobs.source_rank OR (o.source_rank = jobs.source_rank AND o.source < jobs.source))
+      )`,
+  ).run({ atsRank: SOURCE_RANK.ats, evergreenBefore });
 }
 
 const TIER_THRESHOLDS: [string, number][] = [
@@ -351,7 +368,7 @@ export async function runIngestion(db: Db, sources: SourceAdapter[], options: In
   );
   if (summaries.some((s) => s.status !== "skipped")) {
     retireStaleJobs(db, now, options.staleAfterDays);
-    recomputeCanonical(db);
+    recomputeCanonical(db, now);
     recomputeCompanyTiers(db);
   }
   return summaries;

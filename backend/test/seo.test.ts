@@ -42,7 +42,8 @@ describe("SEO and link previews", () => {
       ],
       errors: [],
     });
-    await runIngestion(db, [ats], { staleAfterDays: 30 });
+    // Pinned: the fixed dates above must not age into evergreen postings.
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => new Date("2026-10-28T00:00:00Z") });
     db.prepare("UPDATE jobs SET closed_at = '2026-10-25T00:00:00Z' WHERE id = 'greenhouse:2'").run();
     // Titles come from third parties: this one tries to break out of the HTML.
     db.prepare("UPDATE jobs SET title = ?, company = ? WHERE id = 'greenhouse:a/b c'").run(

@@ -65,7 +65,7 @@ split view whose selection is part of the URL (`?job=…`).
 
 | Problem with typical boards | What job-radar does |
 | --- | --- |
-| Stale listings that stay up for months | Each company's job board is read **in full**. A job that disappears from it is closed at the next run. Jobs from partially-read feeds are closed after `STALE_AFTER_DAYS` (default 30) without being seen, or at the source's expiry date. |
+| Stale listings that stay up for months | Each company's job board is read **in full**. A job that disappears from it is closed at the next run. Jobs from partially-read feeds are closed after `STALE_AFTER_DAYS` (default 30) without being seen, or at the source's expiry date. Postings on employer ATS boards that were posted over 180 days ago are evergreen "talent pools", not current openings: they stay reachable by link but are left out of the listing, counts, RSS and sitemap (see `EVERGREEN_AFTER_DAYS`). |
 | "Apply" leads to another job board | For job-board listings, job-radar looks for **the employer's own posting** and links "Apply" there (see below). |
 | Reposts of reposts | Postings come from the employer's own ATS (Greenhouse, Lever, Ashby) first. When the same opening also appears on an aggregator, only the ATS copy is shown (see `recomputeCanonical`). |
 | "Remote" that isn't open to you | Locations are parsed into ISO country lists (regions like *EMEA* and *LATAM* are expanded). The **Your location** filter shows remote jobs open to that country, plus hybrid and on-site jobs located there. |
@@ -85,7 +85,7 @@ interval a source will ever be polled at, even with a smaller setting.
 | InHire | Employer ATS (Brazil) | Remote and hybrid roles of each company in `companies.ts` (one detail request per role) | 6h |
 | Himalayas | Aggregator | Newest 1,000 remote jobs (the feed has 100k+) | 1h |
 | Jobicy | Aggregator | Up to 500 remote jobs | 2h |
-| Arbeitnow | Aggregator | Full feed (Europe-heavy) | 1h |
+| Arbeitnow | Aggregator | Full feed (Europe-heavy), paged to the end with a pause between pages | 1h |
 | Remotive | Aggregator | Public sample feed only (~15 jobs, delayed 24h) | 6h, per its terms |
 
 Aggregator jobs link back to the aggregator's posting, as their API terms
