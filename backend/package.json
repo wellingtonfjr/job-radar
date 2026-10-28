@@ -12,6 +12,7 @@
     "start": "node dist/index.js",
     "ingest": "tsx src/ingestion/run.ts",
     "resolve": "tsx src/ingestion/run.ts --resolve-only",
+    "audit:accuracy": "tsx src/accuracy/run.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"
   },

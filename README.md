@@ -150,7 +150,8 @@ backend/   Node 20+ · TypeScript · Express · SQLite (better-sqlite3)
   src/sources/     one adapter per source (fetch + map only)
   src/normalize/   category, seniority, employment type, salary, location, skills, dedup keys
   src/ingestion/   pipeline (upsert/close/retire/dedup/tiers), scheduler, CLI
-  src/api/         GET /api/jobs, /api/jobs/:id, /api/stats
+  src/accuracy/    weekly audit: sampled roles re-checked against the employers' ATS
+  src/api/         GET /api/jobs, /api/jobs/:id, /api/stats, /api/accuracy
 frontend/  React 19 · TypeScript · Vite (no router/UI libraries)
 ```
 
@@ -214,6 +215,8 @@ when known, otherwise `url`) and `applyDirect`.
 (other sources listing the same opening).
 `GET /api/stats` returns totals, facet counts, the countries present, and each
 source's last run.
+`GET /api/accuracy` returns the latest accuracy audit per source (see below);
+`run` is `null` before the first one.
 
 ## Checks
 
@@ -230,6 +233,27 @@ reads `lastUpdatedAt` from `/api/stats` and fails if it is more than 26 hours
 old (or the request fails). GitHub e-mails the person who last edited that
 workflow when a scheduled run fails. To try it by hand, run it from the
 Actions tab with a small `max_age_hours` (e.g. `0.01`), which should fail.
+
+### Accuracy audit
+
+Every `ACCURACY_AUDIT_DAYS` (default 7; `0` disables) the scheduler re-checks,
+per source, a random sample of about 50 roles we show as open and 20 we closed
+in the last 7 days against the employer's own ATS API (`npm run audit:accuracy`
+runs one by hand). Greenhouse and Lever postings are looked up by id (200 =
+open, 404 = closed); Ashby postings in their board's list. Job-board roles are
+checked through the ATS posting their apply link points to; anything else is
+`unknown`, never assumed open. Job-board pages aren't used: several answer 200
+even for closed roles. Requests are few, spaced per host and identified as
+`job-radar-accuracy-audit`.
+
+Per source, `/api/accuracy` reports open precision (share of verified "open"
+roles that are open upstream), the false-closure rate (share of verified recent
+closures still open upstream), closure latency p50/p90 (`closed_at −
+last_seen_at`) and coverage (share of sampled roles that could be verified).
+The weekly [Accuracy](.github/workflows/accuracy.yml) workflow fails when open
+precision is below 97% for an ATS source or 90% for a job board (with at least
+20 verified roles), or when false closures across all sources exceed 2% (with
+at least 50 verified).
 
 ## Known limitations
 

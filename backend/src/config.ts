@@ -45,6 +45,11 @@ export const config = {
    */
   pruneAfterDays: nonNegativeIntFromEnv("PRUNE_AFTER_DAYS", 90),
   /**
+   * Days between accuracy audits run by the scheduler (sampled roles
+   * re-checked against the employers' ATS; see accuracy/). 0 disables.
+   */
+  accuracyAuditDays: nonNegativeIntFromEnv("ACCURACY_AUDIT_DAYS", 7),
+  /**
    * Another origin allowed to call the API from a browser (e.g. a separate
    * frontend). Unset by default: the UI is served from the same origin, so
    * no CORS header is needed, and other sites can't read the API.

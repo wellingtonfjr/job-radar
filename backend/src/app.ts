@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import express, { type ErrorRequestHandler, type Request } from "express";
+import { createAccuracyRouter } from "./api/accuracy.js";
 import { createJobsRouter } from "./api/jobs.js";
 import { createStatsRouter } from "./api/stats.js";
 import { DEFAULT_RATE_LIMIT_PER_MINUTE } from "./config.js";
@@ -119,6 +120,7 @@ export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = 
   app.use("/api", apiLimiter);
   app.use("/api/jobs", createJobsRouter(db, siteUrl));
   app.use("/api/stats", createStatsRouter(db));
+  app.use("/api/accuracy", createAccuracyRouter(db));
 
   app.use("/api", (_req, res) => {
     res.status(404).json({ error: "Not found" });
