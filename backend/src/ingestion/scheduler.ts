@@ -67,6 +67,7 @@ export function startScheduler(
     runAudit = liveAudit,
     livenessRequestsPerHour = 0,
     runLiveness = liveLiveness,
+    knownSources,
   }: {
     tickMinutes: number;
     staleAfterDays: number | StaleWindows;
@@ -78,13 +79,15 @@ export function startScheduler(
     /** Liveness-check requests per hour; 0 disables it. */
     livenessRequestsPerHour?: number;
     runLiveness?: LivenessRunner;
+    /** Every registered source id; open roles from any other source are closed. */
+    knownSources?: string[];
   },
 ): Scheduler {
   let running: Promise<void> | null = null;
 
   const tick = (): void => {
     if (running) return;
-    running = runIngestion(db, sources, { staleAfterDays, minIntervalMinutes: ingestIntervalHours * 60 })
+    running = runIngestion(db, sources, { staleAfterDays, minIntervalMinutes: ingestIntervalHours * 60, knownSources })
       .then((summaries) => {
         logSummaries(summaries);
         // Housekeeping only after a cycle that actually fetched something.
