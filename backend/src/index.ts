@@ -3,6 +3,7 @@ import path from "node:path";
 import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { openDb } from "./db/index.js";
+import { staleWindowsFor } from "./ingestion/pipeline.js";
 import { startScheduler } from "./ingestion/scheduler.js";
 import { SOURCES } from "./sources/index.js";
 
@@ -28,10 +29,11 @@ const scheduler =
   config.schedulerTickMinutes > 0
     ? startScheduler(db, SOURCES, {
         tickMinutes: config.schedulerTickMinutes,
-        staleAfterDays: config.staleAfterDays,
+        staleAfterDays: staleWindowsFor(SOURCES, config.staleAfterDays, config.jobBoardStaleAfterDays),
         ingestIntervalHours: config.ingestIntervalHours,
         pruneAfterDays: config.pruneAfterDays,
         accuracyAuditDays: config.accuracyAuditDays,
+        livenessRequestsPerHour: config.livenessRequestsPerHour,
       })
     : null;
 if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");

@@ -3,7 +3,8 @@ import { errorMessage, mapLimit } from "../sources/http.js";
 import { SOURCES } from "../sources/index.js";
 import type { SourceAdapter } from "../sources/types.js";
 import { countVerdicts, hoursBetween, percentile, type VerdictCounts } from "./metrics.js";
-import { createVerifier, parsePostingRef, refFromAtsRow, type AuditNet, type PostingRef, type Verdict } from "./verify.js";
+import { createRefLookup, type RefRow } from "./refs.js";
+import { createVerifier, type AuditNet, type PostingRef, type Verdict } from "./verify.js";
 
 /**
  * The accuracy audit: for each source, re-checks a random sample of the roles
@@ -35,14 +36,8 @@ export interface AuditOptions {
 export const CLOSED_WINDOW_DAYS = 7;
 const MAX_MISMATCHES = 20;
 
-interface JobRow {
+interface JobRow extends RefRow {
   id: string;
-  source: string;
-  feed: string;
-  external_id: string;
-  url: string;
-  apply_url: string | null;
-  description_links: string;
 }
 
 export interface SourceAudit {
@@ -58,8 +53,6 @@ export interface AuditSummary {
   runId: number;
   sources: SourceAudit[];
 }
-
-const ATS_SOURCES = ["greenhouse", "lever", "ashby"];
 
 /** Draws rows in order until `target` of them have a checkable posting. */
 function draw(rows: readonly JobRow[], target: number, refFor: (row: JobRow) => PostingRef | null) {
@@ -93,27 +86,7 @@ export async function runAccuracyAudit(db: Db, net: AuditNet, options: AuditOpti
        ORDER BY RANDOM() LIMIT ?`,
     );
     const closures = db.prepare("SELECT last_seen_at, closed_at FROM jobs WHERE source = ? AND closed_at >= ?");
-    const atsRowByUrl = db.prepare(
-      `SELECT source, feed, external_id FROM jobs WHERE url = ? AND source IN (${ATS_SOURCES.map(() => "?").join(", ")}) LIMIT 1`,
-    );
-
-    const refFor = (row: JobRow): PostingRef | null => {
-      const own = refFromAtsRow(row.source, row.feed, row.external_id);
-      if (own) return own;
-      const fromApply = parsePostingRef(row.apply_url);
-      if (fromApply) return fromApply;
-      // An "ats-match" apply link is the URL of a row we ingest from the ATS
-      // (sometimes on the employer's own domain), so its board and id are known.
-      if (row.apply_url) {
-        const ats = atsRowByUrl.get(row.apply_url, ...ATS_SOURCES) as { source: string; feed: string; external_id: string } | undefined;
-        if (ats) return refFromAtsRow(ats.source, ats.feed, ats.external_id);
-      }
-      for (const link of [...(JSON.parse(row.description_links) as string[]), row.url]) {
-        const ref = parsePostingRef(link);
-        if (ref) return ref;
-      }
-      return null;
-    };
+    const refFor = createRefLookup(db);
 
     const plans = sources.map((source) => ({
       source,
