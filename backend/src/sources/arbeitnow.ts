@@ -5,9 +5,9 @@ import type { FetchOutcome, SourceAdapter } from "./types.js";
 
 /**
  * https://www.arbeitnow.com/api/job-board-api — public, mostly Europe-based
- * jobs (many in Germany), 100 per page via `links.next`, refreshed hourly.
+ * jobs (many in Germany), 300 per page via `links.next`, refreshed hourly.
  */
-interface ArbeitnowJob {
+export interface ArbeitnowJob {
   slug: string;
   company_name: string;
   title: string;
@@ -20,12 +20,26 @@ interface ArbeitnowJob {
   created_at?: number;
 }
 
-interface ArbeitnowResponse {
+export interface ArbeitnowResponse {
   data: ArbeitnowJob[];
   links?: { next?: string | null };
 }
 
-const MAX_PAGES = 10;
+const FIRST_PAGE = "https://www.arbeitnow.com/api/job-board-api";
+/**
+ * Safety cap only: the whole feed is read so that roles missing from it can
+ * be closed. 21 pages (~4,600 jobs) in October 2026; the cap leaves room for
+ * the feed to roughly triple.
+ */
+const MAX_PAGES = 60;
+/** Pause between pages: rapid paging trips the site's bot protection. */
+const PAGE_DELAY_MS = 3_000;
+
+export interface ArbeitnowOptions {
+  fetchPage?: (url: string) => Promise<ArbeitnowResponse>;
+  maxPages?: number;
+  pageDelayMs?: number;
+}
 
 function toRawJob(j: ArbeitnowJob): RawJob {
   return {
@@ -45,26 +59,39 @@ function toRawJob(j: ArbeitnowJob): RawJob {
   };
 }
 
-export const arbeitnowSource: SourceAdapter = {
-  id: "arbeitnow",
-  name: "Arbeitnow",
-  kind: "aggregator",
-  homepage: "https://www.arbeitnow.com",
-  minIntervalMinutes: 60,
-  async fetchJobs(): Promise<FetchOutcome> {
-    const jobs: RawJob[] = [];
-    let url: string | null = "https://www.arbeitnow.com/api/job-board-api";
-    let complete = false;
-    try {
-      for (let page = 0; page < MAX_PAGES && url; page++) {
-        const data: ArbeitnowResponse = await getJson<ArbeitnowResponse>(url);
-        jobs.push(...data.data.map(toRawJob));
-        url = data.links?.next ?? null;
+export function createArbeitnowSource({
+  fetchPage = (url) => getJson<ArbeitnowResponse>(url),
+  maxPages = MAX_PAGES,
+  pageDelayMs = PAGE_DELAY_MS,
+}: ArbeitnowOptions = {}): SourceAdapter {
+  return {
+    id: "arbeitnow",
+    name: "Arbeitnow",
+    kind: "aggregator",
+    homepage: "https://www.arbeitnow.com",
+    minIntervalMinutes: 60,
+    async fetchJobs(): Promise<FetchOutcome> {
+      const jobs: RawJob[] = [];
+      let url: string | null = FIRST_PAGE;
+      try {
+        for (let page = 0; page < maxPages && url; page++) {
+          if (page > 0 && pageDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, pageDelayMs));
+          const data: ArbeitnowResponse = await fetchPage(url);
+          jobs.push(...data.data.map(toRawJob));
+          url = data.links?.next ?? null;
+        }
+      } catch (err) {
+        if (jobs.length === 0) return { results: [], errors: [{ feed: "all", error: errorMessage(err) }] };
+        // Keep the pages already read, but missing roles can't be closed.
+        return { results: [{ feed: "all", complete: false, jobs }], errors: [{ feed: "all", error: `stopped early: ${errorMessage(err)}` }] };
       }
-      complete = url === null;
-    } catch (err) {
-      if (jobs.length === 0) return { results: [], errors: [{ feed: "all", error: errorMessage(err) }] };
-    }
-    return { results: [{ feed: "all", complete, jobs }], errors: [] };
-  },
-};
+      // Complete only when the feed itself said there is no next page, not
+      // when the cap cut it short.
+      const complete = url === null;
+      const errors = complete ? [] : [{ feed: "all", error: `stopped at the ${maxPages}-page cap before the end of the feed` }];
+      return { results: [{ feed: "all", complete, jobs }], errors };
+    },
+  };
+}
+
+export const arbeitnowSource = createArbeitnowSource();

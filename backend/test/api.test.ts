@@ -30,6 +30,8 @@ beforeAll(async () => {
           rawJob({ externalId: "2", title: "Product Designer", locations: ["Berlin, Germany"], workplace: "onsite", postedAt: daysAgo(3) }),
           rawJob({ externalId: "3", title: "Backend Engineer", locations: ["Remote - USA"], descriptionHtml: "<p>Go and Kafka. Python</p>", postedAt: daysAgo(20) }),
           rawJob({ externalId: "4", title: "Account Executive", locations: ["Remote, LATAM"], postedAt: daysAgo(2) }),
+          // Evergreen: open on the board, but posted well over 180 days ago.
+          rawJob({ externalId: "5", title: "Forward Deployed Engineer", postedAt: daysAgo(400) }),
         ],
       },
     ],
@@ -142,6 +144,23 @@ describe("GET /api/stats", () => {
     expect(body.totals).toMatchObject({ openJobs: 6, companies: 3, remote: 5, withSalary: 1, newLast7Days: 3 });
     expect(body.categories.find((c: any) => c.id === "design")).toMatchObject({ count: 1 });
     expect(body.countries).toEqual(expect.arrayContaining(["BR", "DE", "US"]));
-    expect(body.sources.find((s: any) => s.id === "greenhouse")).toMatchObject({ openJobs: 4, lastRun: { status: "ok", fetched: 4 } });
+    expect(body.sources.find((s: any) => s.id === "greenhouse")).toMatchObject({ openJobs: 5, lastRun: { status: "ok", fetched: 5 } });
+  });
+});
+
+describe("evergreen ATS postings", () => {
+  it("are left out of the listing, its counts, stats, RSS and the sitemap", async () => {
+    const list = await get("/api/jobs?pageSize=50");
+    expect(list.body.jobs.map((j: any) => j.id)).not.toContain("greenhouse:5");
+    expect(list.body.total).toBe(6);
+    expect((await get("/api/stats")).body.totals.openJobs).toBe(6);
+    expect(await (await fetch(`${base}/api/jobs/feed.xml`)).text()).not.toContain("greenhouse:5");
+    expect(await (await fetch(`${base}/sitemap.xml`)).text()).not.toContain("greenhouse%3A5");
+  });
+
+  it("stay open: reachable by id and through the source filter", async () => {
+    expect((await get("/api/jobs/greenhouse%3A5")).body).toMatchObject({ id: "greenhouse:5", closedAt: null });
+    const bySource = await get("/api/jobs?source=greenhouse&pageSize=50");
+    expect(bySource.body.jobs.map((j: any) => j.id)).toContain("greenhouse:5");
   });
 });
