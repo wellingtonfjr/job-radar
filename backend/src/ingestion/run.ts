@@ -3,7 +3,7 @@ import { openDb } from "../db/index.js";
 import { SOURCES, findSource } from "../sources/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks } from "../resolve/resolver.js";
-import { pruneOldRows, runIngestion } from "./pipeline.js";
+import { pruneOldRows, runIngestion, staleWindowsFor } from "./pipeline.js";
 import { logPrune, logResolve } from "./scheduler.js";
 
 /**
@@ -32,7 +32,8 @@ async function main(): Promise<void> {
     console.log(`[ingest] ${sources.length} source(s)${force ? " (forced)" : ""} → ${config.dbPath}`);
     const summaries = await runIngestion(db, sources, {
       force,
-      staleAfterDays: config.staleAfterDays,
+      // Every source's window: stale roles are retired across all sources, not just these.
+      staleAfterDays: staleWindowsFor(SOURCES, config.staleAfterDays, config.jobBoardStaleAfterDays),
       minIntervalMinutes: config.ingestIntervalHours * 60,
     });
     console.table(

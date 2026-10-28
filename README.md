@@ -65,7 +65,7 @@ split view whose selection is part of the URL (`?job=…`).
 
 | Problem with typical boards | What job-radar does |
 | --- | --- |
-| Stale listings that stay up for months | Each company's job board is read **in full**. A job that disappears from it is closed at the next run. Jobs from partially-read feeds are closed after `STALE_AFTER_DAYS` (default 30) without being seen, or at the source's expiry date. Postings on employer ATS boards that were posted over 180 days ago are evergreen "talent pools", not current openings: they stay reachable by link but are left out of the listing, counts, RSS and sitemap (see `EVERGREEN_AFTER_DAYS`). |
+| Stale listings that stay up for months | Each company's job board is read **in full**. A job that disappears from it is closed at the next run. Jobs from partially-read feeds are re-checked against the employer's ATS when possible (see [Liveness checks](#liveness-checks)) and are otherwise closed after their source's stale window without being seen (30 days, 14 for job boards), or at the source's expiry date. Postings on employer ATS boards that were posted over 180 days ago are evergreen "talent pools", not current openings: they stay reachable by link but are left out of the listing, counts, RSS and sitemap (see `EVERGREEN_AFTER_DAYS`). |
 | "Apply" leads to another job board | For job-board listings, job-radar looks for **the employer's own posting** and links "Apply" there (see below). |
 | Reposts of reposts | Postings come from the employer's own ATS (Greenhouse, Lever, Ashby) first. When the same opening also appears on an aggregator, only the ATS copy is shown (see `recomputeCanonical`). |
 | "Remote" that isn't open to you | Locations are parsed into ISO country lists (regions like *EMEA* and *LATAM* are expanded). The **Your location** filter shows remote jobs open to that country, plus hybrid and on-site jobs located there. |
@@ -150,7 +150,7 @@ backend/   Node 26 · TypeScript · Express · SQLite (better-sqlite3)
   src/sources/     one adapter per source (fetch + map only)
   src/normalize/   category, seniority, employment type, salary, location, skills, dedup keys
   src/ingestion/   pipeline (upsert/close/retire/dedup/tiers), scheduler, CLI
-  src/accuracy/    weekly audit: sampled roles re-checked against the employers' ATS
+  src/accuracy/    weekly audit and hourly liveness checks against the employers' ATS
   src/api/         GET /api/jobs, /api/jobs/:id, /api/stats, /api/accuracy
 frontend/  React 19 · TypeScript · Vite (no router/UI libraries)
 ```
@@ -169,7 +169,8 @@ cd frontend && npm install && npm run dev                # UI on :5173, proxies 
 The API checks for due sources on startup and every `SCHEDULER_TICK_MINUTES`
 (default 60). A source is due once `INGEST_INTERVAL_HOURS` (default 12) have
 passed since its last run, so restarts don't cause extra fetching. Other settings:
-`PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `SCHEDULER=off`, `RATE_LIMIT_PER_MINUTE`
+`PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `JOB_BOARD_STALE_AFTER_DAYS`,
+`LIVENESS_REQUESTS_PER_HOUR`, `SCHEDULER=off`, `RATE_LIMIT_PER_MINUTE`
 (default 180 API requests per visitor per minute), `FRONTEND_DIST` (built
 frontend the API serves; default `../frontend/dist`) and `CORS_ORIGIN` (unset
 by default: the UI is same-origin, so no other site may read the API) and
@@ -261,6 +262,38 @@ The weekly [Accuracy](.github/workflows/accuracy.yml) workflow fails when open
 precision is below 97% for an ATS source or 90% for a job board (with at least
 20 verified roles), or when false closures across all sources exceed 2% (with
 at least 50 verified).
+
+### Liveness checks
+
+Only a complete feed closes missing roles at the next run. Himalayas is never
+read in full, and Jobicy and Arbeitnow aren't when they hit their page cap, so
+the scheduler re-checks their open roles against the employer's ATS with the
+audit's verifiers, for roles whose apply link (or a link in the description)
+points to a Greenhouse, Lever or Ashby posting.
+
+- **Budget:** `LIVENESS_REQUESTS_PER_HOUR` (default 300; `0` disables). Each
+  tick spends what has accrued since the last check, at most one hour's
+  worth. A Greenhouse or Lever posting costs one request; an Ashby board one
+  request for all its roles. Requests go two at a time, at least 1 s apart per
+  host, with a 15 s timeout, identified as `job-radar-liveness-check`.
+- **Rotation:** roles never checked go first, then the oldest check, so every
+  checkable role is revisited in turn.
+- **Closure:** a role is closed after **two consecutive** "closed" answers
+  (404, or missing from its Ashby board); an "open" answer resets the count and
+  "unknown" (403, 429, 5xx, timeouts) changes nothing. A role closed this way
+  stays closed even if the job board keeps listing it, and any copy of it from
+  another source that it was hiding is shown again.
+
+Roles that can't be checked fall back to a per-source stale window: closed
+after this many days without being seen in their feed.
+
+| Sources | Window | Setting |
+|---|---|---|
+| Job boards (Himalayas, Jobicy, Arbeitnow, Remotive) | 14 days | `JOB_BOARD_STALE_AFTER_DAYS` |
+| Everything else (employer ATS boards) | 30 days | `STALE_AFTER_DAYS` |
+
+Job-board roles the liveness check has verified keep the 30-day window, since
+it closes them as soon as their ATS posting goes.
 
 ## Known limitations
 

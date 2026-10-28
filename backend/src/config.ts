@@ -40,6 +40,18 @@ export const config = {
    */
   staleAfterDays: intFromEnv("STALE_AFTER_DAYS", 30),
   /**
+   * The same for job boards (aggregator sources), whose roles mostly can't be
+   * checked against the employer. Roles the liveness check can verify keep
+   * at least `staleAfterDays`.
+   */
+  jobBoardStaleAfterDays: intFromEnv("JOB_BOARD_STALE_AFTER_DAYS", 14),
+  /**
+   * Requests per hour the scheduler's liveness check may send to Greenhouse,
+   * Lever and Ashby to re-check job-board roles (see accuracy/liveness.ts).
+   * 0 disables it.
+   */
+  livenessRequestsPerHour: nonNegativeIntFromEnv("LIVENESS_REQUESTS_PER_HOUR", 300),
+  /**
    * Closed jobs and source-run history older than this many days are deleted
    * after each ingestion cycle (see pruneOldRows). 0 keeps everything.
    */
