@@ -67,7 +67,7 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
 
   const categoryName = (id: string) => stats?.categories.find((c) => c.id === id)?.name ?? id;
   const isNew = (job: Job) => {
-    const recentlyPosted = Date.now() - Date.parse(job.postedAt ?? job.firstSeenAt) < DAY_MS;
+    const recentlyPosted = listing.fetchedAt - Date.parse(job.postedAt ?? job.firstSeenAt) < DAY_MS;
     return recentlyPosted || (lastVisit !== null && job.firstSeenAt > lastVisit);
   };
   const activeCount = countActiveFilters(filters);

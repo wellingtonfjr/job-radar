@@ -146,7 +146,9 @@ export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = 
     // An open role's page gets its own title and preview tags, since crawlers
     // and link previews don't run JavaScript.
     const indexHtml = fs.readFileSync(path.join(staticDir, "index.html"), "utf8");
-    app.get("*", (req, res, next) => {
+    // "{*splat}" is Express 5's catch-all; the braces make it optional, so
+    // "/" itself matches too.
+    app.get("/{*splat}", (req, res, next) => {
       if (FILE_EXTENSION.test(req.path)) return next();
       res.setHeader("Cache-Control", "no-cache");
       res.type("html").send(renderPage(req.path));
