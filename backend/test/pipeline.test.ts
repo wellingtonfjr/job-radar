@@ -70,6 +70,21 @@ describe("runIngestion", () => {
     expect(openIds(db)).toEqual(["ats:1"]);
   });
 
+  it("closes jobs of a source removed from the registry, but only when told the registry", async () => {
+    const ats = fakeSource("ats");
+    const gone = fakeSource("gone", "aggregator");
+    ats.respond({ results: [{ feed: "all", complete: true, jobs: [rawJob({ externalId: "1" })] }], errors: [] });
+    gone.respond({ results: [{ feed: "all", complete: true, jobs: [rawJob({ externalId: "2", company: "Globex" })] }], errors: [] });
+    await runIngestion(db, [ats, gone], { staleAfterDays: 30, now: () => T0 });
+
+    // A run of a subset of sources (e.g. the CLI with one source) leaves the others alone.
+    await runIngestion(db, [ats], { staleAfterDays: 30, force: true, now: () => hoursLater(1) });
+    expect(openIds(db)).toEqual(["ats:1", "gone:2"]);
+
+    await runIngestion(db, [ats], { staleAfterDays: 30, force: true, now: () => hoursLater(2), knownSources: ["ats"] });
+    expect(openIds(db)).toEqual(["ats:1"]);
+  });
+
   it("never closes jobs of a feed that failed or was only partially read", async () => {
     const ats = fakeSource("ats");
     ats.respond({

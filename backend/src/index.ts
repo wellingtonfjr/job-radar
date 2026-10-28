@@ -43,6 +43,7 @@ const scheduler =
         pruneAfterDays: config.pruneAfterDays,
         accuracyAuditDays: config.accuracyAuditDays,
         livenessRequestsPerHour: config.livenessRequestsPerHour,
+        knownSources: SOURCES.map((s) => s.id),
       })
     : null;
 if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");

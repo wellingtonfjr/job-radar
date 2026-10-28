@@ -10,6 +10,7 @@
  *   - Lever:      jobs.lever.co/{token}
  *   - Ashby:      jobs.ashbyhq.com/{token}
  *   - InHire:     {token}.inhire.app (Brazilian ATS)
+ *   - SmartRecruiters: jobs.smartrecruiters.com/{token}/{postingId}
  * and add `{ token, name }` to the matching list.
  */
 export interface CompanyBoard {
@@ -115,4 +116,38 @@ export const INHIRE_BOARDS: CompanyBoard[] = [
   { token: "loglabdigital", name: "Loglab Digital" },
   { token: "alun", name: "FIAP / Alura / PM3" },
   { token: "solfacil", name: "Solfácil" },
+];
+
+export interface SmartRecruitersBoard extends CompanyBoard {
+  /**
+   * SmartRecruiters `function` ids to keep, for large employers whose board
+   * is mostly non-tech (Bosch lists ~5,000 roles, most of them in plants).
+   * The rest are left out on purpose and counted as skipped.
+   */
+  functions?: readonly string[];
+}
+
+/**
+ * Tech employers on SmartRecruiters with remote or hybrid developer roles
+ * (company ids verified 2026-10-28; ids are case-insensitive).
+ */
+export const SMARTRECRUITERS_BOARDS: SmartRecruitersBoard[] = [
+  { token: "ServiceNow", name: "ServiceNow" },
+  { token: "Experian", name: "Experian" },
+  { token: "Canva", name: "Canva" },
+  { token: "Freshworks", name: "Freshworks" },
+  { token: "Nexthink", name: "Nexthink" },
+  { token: "Mirantis", name: "Mirantis" },
+  { token: "Jitterbit", name: "Jitterbit" },
+  { token: "Ubisoft2", name: "Ubisoft" },
+  { token: "CDPROJEKTRED", name: "CD PROJEKT RED" },
+  { token: "ABOUTYOUGmbH", name: "ABOUT YOU" },
+  { token: "ScalableGmbH", name: "Scalable Capital" },
+  { token: "Endava", name: "Endava" },
+  { token: "Version1", name: "Version 1" },
+  { token: "SoftwareMind", name: "Software Mind" },
+  { token: "SigmaSoftware2", name: "Sigma Software" },
+  { token: "Devexperts", name: "Devexperts" },
+  { token: "BoschGroup", name: "Bosch", functions: ["information_technology"] },
+  { token: "DeliveryHero", name: "Delivery Hero", functions: ["information_technology"] },
 ];

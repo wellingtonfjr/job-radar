@@ -34,7 +34,7 @@ still open, and sends you to the employer's own posting whenever it can.
 
 ```
 Employer hiring pages                 Job boards
-(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Remotive)
+(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Get on Board)
               │                                   │
               └──────────── twice a day ──────────┘
                                │
@@ -82,15 +82,20 @@ interval a source will ever be polled at, even with a smaller setting.
 | Source | Kind | Scope per run | Minimum interval |
 | --- | --- | --- | --- |
 | Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts` | 1h |
+| SmartRecruiters | Employer ATS | Full board for each company in `companies.ts` (IT roles only for Bosch and Delivery Hero); descriptions fetched for new postings, at most 500 a run | 2h |
 | InHire | Employer ATS (Brazil) | Remote and hybrid roles of each company in `companies.ts` (one detail request per role) | 6h |
 | Himalayas | Aggregator | Newest 1,000 remote jobs (the feed has 100k+) | 1h |
 | Jobicy | Aggregator | Up to 500 remote jobs | 2h |
 | Arbeitnow | Aggregator | Full feed (Europe-heavy), paged to the end with a pause between pages | 1h |
-| Remotive | Aggregator | Public sample feed only (~15 jobs, delayed 24h) | 6h, per its terms |
+| Get on Board | Aggregator (Latin America) | Every role in the tech categories (programming, devops/QA, data, ML/AI, mobile, design/UX, cybersecurity), paged to the end with a 1 s pause between pages. Public API, no key; no rate limit or attribution terms are published, and listings link to the role's page on getonbrd.com | 1h |
 
 Aggregator jobs link back to the aggregator's posting, as their API terms
-require. Remotive's free API is deliberately small; most volume comes from the
-ATS boards.
+require. Most volume comes from the ATS boards.
+
+Removed sources: Remotive (its free feed had ~10 roles and its terms restrict
+reuse of the listings). When a source is removed from
+`backend/src/sources/index.ts`, its open roles are closed at the next
+ingestion cycle.
 
 ### Direct links to the employer
 
@@ -102,8 +107,7 @@ each board listing. It tries these in order of reliability:
 2. **description:** a job-specific ATS link inside the description (Lever,
    Greenhouse, Ashby, Workable, Recruitee, SmartRecruiters, Personio,
    Teamtailor, Workday…). Careers homepages don't count.
-3. **listing-page:** Remotive's public "Apply for this position" link.
-4. **ats-discovery:** the company's public board, found by name ("Lemon.io"
+3. **ats-discovery:** the company's public board, found by name ("Lemon.io"
    → `lemonio`, `lemon-io`, `lemon`) on Greenhouse, Lever, Ashby, Workable
    and Recruitee. It's used only if that board has a posting with the same
    title; gender markers and "(Remote)" are ignored, every other qualifier
@@ -120,12 +124,9 @@ Himalayas blocks automated requests, and many Arbeitnow employers take
 applications only through Arbeitnow's own form. Those listings keep
 "Apply on <board>" until the posting is found on the employer's board.
 
-> Remotive's API terms ask listings to link back to Remotive. job-radar links
-> Apply to the employer but keeps a visible "Listed on Remotive" credit link.
-> Review their terms before deploying publicly.
-
 **Adding a company:** find its careers URL (`boards.greenhouse.io/{token}`,
-`jobs.lever.co/{token}`, `jobs.ashbyhq.com/{token}` or `{token}.inhire.app`)
+`jobs.lever.co/{token}`, `jobs.ashbyhq.com/{token}`, `{token}.inhire.app` or
+`jobs.smartrecruiters.com/{token}/…`)
 and add `{ token, name }` to the matching list in `companies.ts`. Only add
 the employer's own board: recruiting agencies and RPOs that post for other
 companies stay out. Removing a company closes its jobs on the next run.
@@ -252,7 +253,7 @@ on `/health` is the upgrade if minute-level alerts matter.
 Every `ACCURACY_AUDIT_DAYS` (default 7; `0` disables) the scheduler re-checks,
 per source, a random sample of about 50 roles we show as open and 20 we closed
 in the last 7 days against the employer's own ATS API (`npm run audit:accuracy`
-runs one by hand). Greenhouse and Lever postings are looked up by id (200 =
+runs one by hand). Greenhouse, Lever and SmartRecruiters postings are looked up by id (200 =
 open, 404 = closed); Ashby postings in their board's list. Job-board roles are
 checked through the ATS posting their apply link points to; anything else is
 `unknown`, never assumed open. Job-board pages aren't used: several answer 200
@@ -271,14 +272,15 @@ at least 50 verified).
 ### Liveness checks
 
 Only a complete feed closes missing roles at the next run. Himalayas is never
-read in full, and Jobicy and Arbeitnow aren't when they hit their page cap, so
-the scheduler re-checks their open roles against the employer's ATS with the
-audit's verifiers, for roles whose apply link (or a link in the description)
-points to a Greenhouse, Lever or Ashby posting.
+read in full, and Jobicy, Arbeitnow and Get on Board aren't when they hit their
+page cap or a page fails, so the scheduler re-checks their open roles against
+the employer's ATS with the audit's verifiers, for roles whose apply link (or a
+link in the description) points to a Greenhouse, Lever, Ashby or
+SmartRecruiters posting.
 
 - **Budget:** `LIVENESS_REQUESTS_PER_HOUR` (default 300; `0` disables). Each
   tick spends what has accrued since the last check, at most one hour's
-  worth. A Greenhouse or Lever posting costs one request; an Ashby board one
+  worth. A Greenhouse, Lever or SmartRecruiters posting costs one request; an Ashby board one
   request for all its roles. Requests go two at a time, at least 1 s apart per
   host, with a 15 s timeout, identified as `job-radar-liveness-check`.
 - **Rotation:** roles never checked go first, then the oldest check, so every
@@ -294,7 +296,7 @@ after this many days without being seen in their feed.
 
 | Sources | Window | Setting |
 |---|---|---|
-| Job boards (Himalayas, Jobicy, Arbeitnow, Remotive) | 14 days | `JOB_BOARD_STALE_AFTER_DAYS` |
+| Job boards (Himalayas, Jobicy, Arbeitnow, Get on Board) | 14 days | `JOB_BOARD_STALE_AFTER_DAYS` |
 | Everything else (employer ATS boards) | 30 days | `STALE_AFTER_DAYS` |
 
 Job-board roles the liveness check has verified keep the 30-day window, since

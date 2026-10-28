@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../src/db/index.js";
 import { runIngestion } from "../src/ingestion/pipeline.js";
 import { boardTokenCandidates, matchPosting, titleKey, type Board } from "../src/resolve/atsDiscovery.js";
-import { remotiveApplyLink } from "../src/resolve/listingPages.js";
 import type { ResolverNet } from "../src/resolve/net.js";
 import { cleanUrl, extractPostingLinks, isPostingUrl } from "../src/resolve/postingUrls.js";
 import { resolveApplyLinks } from "../src/resolve/resolver.js";
@@ -83,20 +82,6 @@ describe("ATS discovery helpers", () => {
   });
 });
 
-describe("remotiveApplyLink", () => {
-  it("reads the employer link from the public page", async () => {
-    const page = `<a class="x" href="https://remotive.com/other">Apply</a>
-      <a role="button" href="https://acme.com/jobs/42?utm_source=remotive&amp;utm_medium=job_ad">Apply for this position</a>`;
-    const { net } = fakeNet({ text: { "https://remotive.com/job/1": page } });
-    expect(await remotiveApplyLink(net, "https://remotive.com/job/1")).toBe("https://acme.com/jobs/42");
-  });
-
-  it("ignores links back to Remotive itself", async () => {
-    const { net } = fakeNet({ text: { "https://remotive.com/job/1": `<a href="https://remotive.com/join">Apply for this position</a>` } });
-    expect(await remotiveApplyLink(net, "https://remotive.com/job/1")).toBeNull();
-  });
-});
-
 describe("resolveApplyLinks", () => {
   const NOW = new Date("2026-10-15T12:00:00Z");
   let db: Db;
@@ -114,26 +99,23 @@ describe("resolveApplyLinks", () => {
     return db.prepare("SELECT apply_url, apply_method FROM jobs WHERE id = ?").get(id);
   }
 
-  it("uses a description link, then Remotive's page, then the company's discovered board", async () => {
+  it("uses a description link, then the company's discovered board", async () => {
     const board = "https://api.ashbyhq.com/posting-api/job-board/globex";
     const { net } = fakeNet({
       json: { [board]: { jobs: [{ title: "Platform Engineer", jobUrl: "https://jobs.ashbyhq.com/globex/abc" }] } },
-      text: { "https://remotive.com/jobs/2": `<a href="https://initech.com/apply/7">Apply for this position</a>` },
     });
-    await ingest(fakeSource("remotive", "aggregator"), [
+    await ingest(fakeSource("himalayas", "aggregator"), [
       { externalId: "1", company: "Acme", descriptionHtml: `<a href="https://jobs.lever.co/acme/0b9c6d4e-1234-4abc-9def-0123456789ab">Apply</a>` },
-      { externalId: "2", company: "Initech", title: "Analyst", url: "https://remotive.com/jobs/2" },
       { externalId: "3", company: "Globex", title: "Platform Engineer (Remote)" },
       { externalId: "4", company: "Hooli", title: "Unknown Role" },
     ]);
 
     const summary = await resolveApplyLinks(db, net, { now: NOW });
-    expect(summary.resolved).toMatchObject({ description: 1, "listing-page": 1, "ats-discovery": 1 });
+    expect(summary.resolved).toMatchObject({ description: 1, "ats-discovery": 1 });
     expect(summary.unresolved).toBe(1);
-    expect(applyRow("remotive:1")).toEqual({ apply_url: "https://jobs.lever.co/acme/0b9c6d4e-1234-4abc-9def-0123456789ab", apply_method: "description" });
-    expect(applyRow("remotive:2")).toEqual({ apply_url: "https://initech.com/apply/7", apply_method: "listing-page" });
-    expect(applyRow("remotive:3")).toEqual({ apply_url: "https://jobs.ashbyhq.com/globex/abc", apply_method: "ats-discovery" });
-    expect(applyRow("remotive:4")).toEqual({ apply_url: null, apply_method: null });
+    expect(applyRow("himalayas:1")).toEqual({ apply_url: "https://jobs.lever.co/acme/0b9c6d4e-1234-4abc-9def-0123456789ab", apply_method: "description" });
+    expect(applyRow("himalayas:3")).toEqual({ apply_url: "https://jobs.ashbyhq.com/globex/abc", apply_method: "ats-discovery" });
+    expect(applyRow("himalayas:4")).toEqual({ apply_url: null, apply_method: null });
     expect(db.prepare("SELECT provider, token FROM ats_boards WHERE company_key = 'globex'").get()).toEqual({ provider: "ashby", token: "globex" });
   });
 

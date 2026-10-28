@@ -155,7 +155,7 @@ export const ptBR: Messages = {
   },
   footer: {
     about:
-      'As páginas de carreira das empresas (Greenhouse, Lever, Ashby e InHire) são varridas diretamente, então uma vaga some assim que a empresa a tira do ar. Sites de vagas públicos cobrem o resto e sempre apontam para o anúncio original.',
+      'As páginas de carreira das empresas (Greenhouse, Lever, Ashby, SmartRecruiters e InHire) são varridas diretamente, então uma vaga some assim que a empresa a tira do ar. Sites de vagas públicos cobrem o resto e sempre apontam para o anúncio original.',
     sources: 'Fontes',
     source: 'Fonte',
     type: 'Tipo',

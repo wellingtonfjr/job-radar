@@ -9,16 +9,17 @@ import { CLOSED_VERDICTS_TO_CLOSE, createVerifier, type AuditNet, type PostingRe
  * employer's ATS says they're gone, instead of waiting for the stale window.
  *
  * Only absence from a complete feed closes a role at ingestion. Himalayas is
- * never read in full, and Jobicy and Arbeitnow aren't when they hit their page
- * cap, so their roles are re-checked here through the ATS posting their apply
- * link points to, with the audit's verifiers. Roles are taken oldest check
+ * never read in full, and Jobicy, Arbeitnow and Get on Board aren't when they
+ * hit their page cap or a page fails, so their roles are re-checked here
+ * through the ATS posting their apply link points to, with the audit's
+ * verifiers. Roles are taken oldest check
  * first (never-checked first) within a request budget, so the whole set is
  * covered in rotation. A role is closed after CLOSED_VERDICTS_TO_CLOSE
  * consecutive "closed" verdicts; "unknown" changes nothing.
  */
 
 /** Job boards whose feeds may be read only in part. */
-export const LIVENESS_SOURCES = ["himalayas", "jobicy", "arbeitnow"];
+export const LIVENESS_SOURCES = ["himalayas", "jobicy", "arbeitnow", "getonbrd"];
 
 export const LIVENESS_USER_AGENT = "job-radar-liveness-check (+https://radar-de-vagas.fly.dev)";
 
@@ -67,7 +68,7 @@ function postingKey(ref: PostingRef): string {
   return `${ref.provider}:${ref.eu ? "eu:" : ""}${ref.board}:${ref.id}`;
 }
 
-/** One request per Greenhouse or Lever posting; one per Ashby board. */
+/** One request per Greenhouse, Lever or SmartRecruiters posting; one per Ashby board. */
 function requestKey(ref: PostingRef): string {
   return ref.provider === "ashby" ? `ashby:${ref.board}` : postingKey(ref);
 }

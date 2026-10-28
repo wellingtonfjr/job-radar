@@ -24,6 +24,12 @@ export interface IngestionOptions {
   now?: () => Date;
   /** Days without being seen before a role from a partially read feed is retired. */
   staleAfterDays: number | StaleWindows;
+  /**
+   * Every registered source id. When given, open roles from any other source
+   * (one that was removed from the registry) are closed, since nothing will
+   * ever see them again.
+   */
+  knownSources?: string[];
 }
 
 const SOURCE_RANK = { ats: 0, aggregator: 1 } as const;
@@ -130,7 +136,11 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
 
   const summary: SourceRunSummary = { source: source.id, status: "ok", fetched: 0, inserted: 0, closed: 0, errors: [] };
   try {
-    const outcome = await source.fetchJobs();
+    const storedDescription = db.prepare("SELECT description FROM jobs WHERE source = ? AND external_id = ?");
+    const outcome = await source.fetchJobs({
+      storedDescription: (externalId) =>
+        (storedDescription.get(source.id, externalId) as { description: string | null } | undefined)?.description ?? null,
+    });
     summary.errors = outcome.errors;
 
     const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");
@@ -224,6 +234,15 @@ export interface StaleWindows {
  */
 export function staleWindowsFor(sources: readonly SourceAdapter[], defaultDays: number, jobBoardDays: number): StaleWindows {
   return { defaultDays, bySource: Object.fromEntries(sources.filter((s) => s.kind === "aggregator").map((s) => [s.id, jobBoardDays])) };
+}
+
+/** Closes open roles from sources that are no longer registered. */
+export function retireRemovedSources(db: Db, now: Date, knownSources: string[]): number {
+  if (knownSources.length === 0) return 0;
+  const placeholders = knownSources.map(() => "?").join(", ");
+  return db
+    .prepare(`UPDATE jobs SET closed_at = ? WHERE closed_at IS NULL AND source NOT IN (${placeholders})`)
+    .run(now.toISOString(), ...knownSources).changes;
 }
 
 /**
@@ -414,6 +433,7 @@ export async function runIngestion(db: Db, sources: SourceAdapter[], options: In
     }),
   );
   if (summaries.some((s) => s.status !== "skipped")) {
+    if (options.knownSources) retireRemovedSources(db, now, options.knownSources);
     retireStaleJobs(db, now, options.staleAfterDays);
     recomputeCanonical(db, now);
     recomputeCompanyTiers(db);
