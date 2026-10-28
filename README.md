@@ -34,7 +34,7 @@ still open, and sends you to the employer's own posting whenever it can.
 
 ```
 Employer hiring pages                 Job boards
-(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Remotive)
+(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Get on Board, Remotive)
               │                                   │
               └──────────── twice a day ──────────┘
                                │
@@ -86,6 +86,7 @@ interval a source will ever be polled at, even with a smaller setting.
 | Himalayas | Aggregator | Newest 1,000 remote jobs (the feed has 100k+) | 1h |
 | Jobicy | Aggregator | Up to 500 remote jobs | 2h |
 | Arbeitnow | Aggregator | Full feed (Europe-heavy), paged to the end with a pause between pages | 1h |
+| Get on Board | Aggregator (Latin America) | Every role in the tech categories (programming, devops/QA, data, ML/AI, mobile, design/UX, cybersecurity), paged to the end with a 1 s pause between pages. Public API, no key; no rate limit or attribution terms are published, and listings link to the role's page on getonbrd.com | 1h |
 | Remotive | Aggregator | Public sample feed only (~15 jobs, delayed 24h) | 6h, per its terms |
 
 Aggregator jobs link back to the aggregator's posting, as their API terms
@@ -266,10 +267,10 @@ at least 50 verified).
 ### Liveness checks
 
 Only a complete feed closes missing roles at the next run. Himalayas is never
-read in full, and Jobicy and Arbeitnow aren't when they hit their page cap, so
-the scheduler re-checks their open roles against the employer's ATS with the
-audit's verifiers, for roles whose apply link (or a link in the description)
-points to a Greenhouse, Lever or Ashby posting.
+read in full, and Jobicy, Arbeitnow and Get on Board aren't when they hit their
+page cap or a page fails, so the scheduler re-checks their open roles against
+the employer's ATS with the audit's verifiers, for roles whose apply link (or a
+link in the description) points to a Greenhouse, Lever or Ashby posting.
 
 - **Budget:** `LIVENESS_REQUESTS_PER_HOUR` (default 300; `0` disables). Each
   tick spends what has accrued since the last check, at most one hour's
@@ -289,7 +290,7 @@ after this many days without being seen in their feed.
 
 | Sources | Window | Setting |
 |---|---|---|
-| Job boards (Himalayas, Jobicy, Arbeitnow, Remotive) | 14 days | `JOB_BOARD_STALE_AFTER_DAYS` |
+| Job boards (Himalayas, Jobicy, Arbeitnow, Get on Board, Remotive) | 14 days | `JOB_BOARD_STALE_AFTER_DAYS` |
 | Everything else (employer ATS boards) | 30 days | `STALE_AFTER_DAYS` |
 
 Job-board roles the liveness check has verified keep the 30-day window, since
