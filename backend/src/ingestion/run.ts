@@ -35,6 +35,8 @@ async function main(): Promise<void> {
       // Every source's window: stale roles are retired across all sources, not just these.
       staleAfterDays: staleWindowsFor(SOURCES, config.staleAfterDays, config.jobBoardStaleAfterDays),
       minIntervalMinutes: config.ingestIntervalHours * 60,
+      // Close roles left behind by sources removed from the registry.
+      knownSources: SOURCES.map((s) => s.id),
     });
     console.table(
       summaries.map(({ errors, ...s }) => ({ ...s, errors: errors.length, firstError: errors[0] ? `${errors[0].feed}: ${errors[0].error}` : "" })),
