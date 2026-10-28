@@ -540,6 +540,11 @@ input {
   color: var(--ink);
   font-weight: 600;
 }
+.results__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
 .filters-toggle {
   display: none;
 }
@@ -1213,6 +1218,13 @@ input {
 @media (max-width: 640px) {
   :root {
     --topbar-h: 104px;
+  }
+  /* Icon only: the link keeps its aria-label. */
+  .feed-link {
+    padding-inline: 12px;
+  }
+  .feed-link__text {
+    display: none;
   }
   .topbar__inner {
     grid-template-columns: 1fr auto;

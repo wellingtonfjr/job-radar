@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import type { Db } from "../db/index.js";
 import {
@@ -14,6 +14,8 @@ import {
 } from "../domain/job.js";
 import { toSearchKey } from "../normalize/text.js";
 import { findSource } from "../sources/index.js";
+import { FEED_MAX_ITEMS, renderJobsFeed, type FeedSearch } from "../web/feed.js";
+import { DEFAULT_SITE_URL } from "../web/seo.js";
 
 /** `a,b,c` → validated list of enum members. */
 function csvOf<T extends string>(values: readonly T[]) {
@@ -215,32 +217,65 @@ export function buildJobFilter(query: JobsQuery, now: Date): { where: string; pa
   return { where: conditions.join(" AND "), params };
 }
 
-export function createJobsRouter(db: Db): Router {
+/** The filter parameters (not paging) that a feed and its search page share. */
+const FILTER_KEYS = Object.keys(querySchema.shape).filter((key) => key !== "page" && key !== "pageSize");
+
+/** The search as given (normalized) plus a short human-readable summary. */
+function describeSearch(raw: Record<string, unknown>, query: JobsQuery): FeedSearch {
+  const params = new URLSearchParams();
+  for (const key of FILTER_KEYS) {
+    const value = raw[key];
+    if (typeof value === "string" && value.trim()) params.set(key, value.trim());
+  }
+  const categoryName = (id: string) => CATEGORIES.find((c) => c.id === id)?.name ?? id;
+  const terms = [
+    query.q ? `"${query.q}"` : null,
+    ...(query.category ?? []).map(categoryName),
+    ...(query.seniority ?? []),
+    ...(query.workplace ?? []),
+    ...(query.type ?? []).map((t) => t.replace("_", "-")),
+    ...(query.skills ?? []),
+    ...(query.tier ?? []).map((t) => `tier ${t}`),
+    query.country ? `open to ${query.country}` : null,
+    query.minSalary !== undefined ? `from $${query.minSalary.toLocaleString("en-US")}/year` : null,
+    query.postedWithin !== undefined ? `last ${query.postedWithin} days` : null,
+    query.company ? `at ${query.company}` : null,
+    query.source ? `from ${findSource(query.source)?.name ?? query.source}` : null,
+    query.direct ? "direct apply" : null,
+  ];
+  return { params, terms: terms.filter((t): t is string => Boolean(t)) };
+}
+
+const FROM_JOBS = "FROM jobs j LEFT JOIN companies c ON c.company_key = j.company_key";
+
+export function createJobsRouter(db: Db, siteUrl = DEFAULT_SITE_URL): Router {
   const router = Router();
 
-  router.get("/", (req, res) => {
+  const parseQuery = (req: Request, res: Response): JobsQuery | null => {
     const parsed = querySchema.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Invalid query parameters", details: z.flattenError(parsed.error).fieldErrors });
-      return;
-    }
-    const query = parsed.data;
+    if (parsed.success) return parsed.data;
+    res.status(400).json({ error: "Invalid query parameters", details: z.flattenError(parsed.error).fieldErrors });
+    return null;
+  };
+
+  router.get("/", (req, res) => {
+    const query = parseQuery(req, res);
+    if (!query) return;
     const now = new Date();
     const { where, params } = buildJobFilter(query, now);
-    const from = "FROM jobs j LEFT JOIN companies c ON c.company_key = j.company_key";
 
     // Same 7-day rule as the stats endpoint, but scoped to the filters.
     const weekAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
     const counts = db
       .prepare(
         `SELECT COUNT(*) AS total, SUM(COALESCE(j.posted_at, j.first_seen_at) >= @weekAgo) AS newLast7Days
-         ${from} WHERE ${where}`,
+         ${FROM_JOBS} WHERE ${where}`,
       )
       .get({ ...params, weekAgo }) as { total: number; newLast7Days: number | null };
     const total = counts.total;
     const rows = db
       .prepare(
-        `SELECT ${LIST_COLUMNS} ${from} WHERE ${where}
+        `SELECT ${LIST_COLUMNS} ${FROM_JOBS} WHERE ${where}
          ORDER BY COALESCE(j.posted_at, j.first_seen_at) DESC, j.id
          LIMIT @limit OFFSET @offset`,
       )
@@ -254,6 +289,27 @@ export function createJobsRouter(db: Db): Router {
       pageSize: query.pageSize,
       hasMore: query.page * query.pageSize < total,
     });
+  });
+
+  // Declared before /:id, which would otherwise take "feed.xml" as an id.
+  router.get("/feed.xml", (req, res) => {
+    const query = parseQuery(req, res);
+    if (!query) return;
+    const now = new Date();
+    const { where, params } = buildJobFilter(query, now);
+    const rows = db
+      .prepare(
+        `SELECT ${LIST_COLUMNS} ${FROM_JOBS} WHERE ${where}
+         ORDER BY COALESCE(j.posted_at, j.first_seen_at) DESC, j.id
+         LIMIT @limit`,
+      )
+      .all({ ...params, limit: FEED_MAX_ITEMS }) as JobRow[];
+
+    const xml = renderJobsFeed(rows.map(rowToJob), describeSearch(req.query as Record<string, unknown>, query), siteUrl, now);
+    // Readers poll; ingestion runs twice a day, so a short shared cache is plenty fresh.
+    res.setHeader("Cache-Control", "public, max-age=900");
+    res.setHeader("Content-Type", "application/rss+xml; charset=utf-8");
+    res.send(xml);
   });
 
   router.get("/:id", (req, res) => {
