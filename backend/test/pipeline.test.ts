@@ -158,6 +158,17 @@ describe("runIngestion", () => {
     expect(due?.status).toBe("ok");
   });
 
+  it("retries a source whose last run never finished (the process stopped mid-run)", async () => {
+    const ats = fakeSource("ats");
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1" })] }], errors: [] });
+    // What a run cut short by a restart leaves behind: started, never finished.
+    db.prepare("INSERT INTO source_runs (source, started_at) VALUES ('ats', ?)").run(T0.toISOString());
+
+    const [run] = await runIngestion(db, [ats], { staleAfterDays: 30, minIntervalMinutes: 12 * 60, now: () => hoursLater(0.5) });
+    expect(run?.status).toBe("ok");
+    expect(openIds(db)).toEqual(["ats:1"]);
+  });
+
   it("respects each source's minimum interval unless forced", async () => {
     const ats = fakeSource("ats");
     ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1" })] }], errors: [] });
