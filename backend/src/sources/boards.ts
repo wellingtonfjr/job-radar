@@ -11,14 +11,14 @@ const BOARD_CONCURRENCY = 4;
  * `complete` feed; a failed board is reported as an error and its jobs are
  * left untouched (never closed because of a transient failure).
  */
-export async function fetchBoards(
-  boards: readonly CompanyBoard[],
-  fetchBoard: (board: CompanyBoard) => Promise<RawJob[]>,
+export async function fetchBoards<B extends CompanyBoard>(
+  boards: readonly B[],
+  fetchBoard: (board: B) => Promise<RawJob[]>,
 ): Promise<FetchOutcome> {
   const settled = await mapLimit(boards, BOARD_CONCURRENCY, fetchBoard);
   const outcome: FetchOutcome = { results: [], errors: [] };
   settled.forEach((result, i) => {
-    const feed = (boards[i] as CompanyBoard).token;
+    const feed = (boards[i] as B).token;
     if (result.status === "fulfilled") {
       outcome.results.push({ feed, complete: true, jobs: result.value });
     } else {

@@ -5,6 +5,7 @@ import { himalayasSource } from "./himalayas.js";
 import { inhireSource } from "./inhire.js";
 import { jobicySource } from "./jobicy.js";
 import { leverSource } from "./lever.js";
+import { smartRecruitersSource } from "./smartrecruiters.js";
 import type { SourceAdapter } from "./types.js";
 
 /** Every source, ATS first (their postings win de-duplication). */
@@ -13,6 +14,7 @@ export const SOURCES: SourceAdapter[] = [
   leverSource,
   ashbySource,
   inhireSource,
+  smartRecruitersSource,
   himalayasSource,
   jobicySource,
   arbeitnowSource,

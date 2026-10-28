@@ -10,7 +10,7 @@
 
 export type Verdict = "open" | "closed" | "unknown";
 
-export type AtsProvider = "greenhouse" | "lever" | "ashby";
+export type AtsProvider = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
 
 /** One posting on one company's board. */
 export interface PostingRef {
@@ -34,6 +34,8 @@ const URL_PATTERNS: { provider: AtsProvider; pattern: RegExp }[] = [
   { provider: "greenhouse", pattern: /greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/i },
   { provider: "lever", pattern: /jobs(\.eu)?\.lever\.co\/([^/?#]+)\/([0-9a-f-]{36})/i },
   { provider: "ashby", pattern: /jobs\.ashbyhq\.com\/([^/?#]+)\/([0-9a-f-]{36})/i },
+  // jobs.smartrecruiters.com/{companyId}/{postingId}-{optional-slug}
+  { provider: "smartrecruiters", pattern: /(?:jobs|careers)\.smartrecruiters\.com\/([^/?#]+)\/(\d+)(?=[-/?#]|$)/i },
 ];
 
 /** The ATS posting a URL points to, or null when it isn't one we can check. */
@@ -52,7 +54,9 @@ export function parsePostingRef(url: string | null | undefined): PostingRef | nu
 
 /** The ref for a row ingested straight from an ATS: feed is the board token, external_id the posting id. */
 export function refFromAtsRow(source: string, feed: string, externalId: string): PostingRef | null {
-  if (source === "greenhouse" || source === "lever" || source === "ashby") return { provider: source, board: feed, id: externalId };
+  if (source === "greenhouse" || source === "lever" || source === "ashby" || source === "smartrecruiters") {
+    return { provider: source, board: feed, id: externalId };
+  }
   return null;
 }
 
@@ -127,8 +131,8 @@ interface AshbyBoard {
 }
 
 /**
- * A verifier for one audit run. Greenhouse and Lever have a per-posting
- * endpoint that answers 200 or 404. Ashby has none, so each board's list is
+ * A verifier for one audit run. Greenhouse, Lever and SmartRecruiters have
+ * a per-posting endpoint that answers 200 or 404. Ashby has none, so each board's list is
  * fetched once per run and every posting is looked up in it.
  */
 export function createVerifier(net: AuditNet): (ref: PostingRef) => Promise<Verdict> {
@@ -160,6 +164,8 @@ export function createVerifier(net: AuditNet): (ref: PostingRef) => Promise<Verd
         return byStatus(await net.get(`https://boards-api.greenhouse.io/v1/boards/${board}/jobs/${encodeURIComponent(ref.id)}`));
       case "lever":
         return byStatus(await net.get(`https://api${ref.eu ? ".eu" : ""}.lever.co/v0/postings/${board}/${encodeURIComponent(ref.id)}`));
+      case "smartrecruiters":
+        return byStatus(await net.get(`https://api.smartrecruiters.com/v1/companies/${board}/postings/${encodeURIComponent(ref.id)}`));
       case "ashby": {
         const listed = await ashbyBoard(ref.board);
         // A board we couldn't read says nothing about the posting.

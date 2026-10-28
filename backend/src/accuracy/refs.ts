@@ -11,7 +11,7 @@ export interface RefRow {
   description_links: string;
 }
 
-const ATS_SOURCES = ["greenhouse", "lever", "ashby"];
+const ATS_SOURCES = ["greenhouse", "lever", "ashby", "smartrecruiters"];
 
 /**
  * Maps a stored role to the ATS posting it can be checked through, or null.

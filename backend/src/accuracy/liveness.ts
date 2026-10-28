@@ -61,7 +61,7 @@ function postingKey(ref: PostingRef): string {
   return `${ref.provider}:${ref.eu ? "eu:" : ""}${ref.board}:${ref.id}`;
 }
 
-/** One request per Greenhouse or Lever posting; one per Ashby board. */
+/** One request per Greenhouse, Lever or SmartRecruiters posting; one per Ashby board. */
 function requestKey(ref: PostingRef): string {
   return ref.provider === "ashby" ? `ashby:${ref.board}` : postingKey(ref);
 }
