@@ -1,7 +1,6 @@
 import type { Job } from '../api/types';
 import { useRoleMarks } from '../hooks/useRoleMarks';
-import { formatAge, formatSalary, locationChips } from '../lib/format';
-import { EMPLOYMENT_TYPE_LABELS, PAY_BAND_LABELS, SENIORITY_LABELS, WORKPLACE_LABELS } from '../lib/labels';
+import { useI18n } from '../i18n';
 import { jobPath } from '../lib/router';
 import { CompanyLogo } from './CompanyLogo';
 import { Link } from './Link';
@@ -21,14 +20,15 @@ interface JobRowProps {
 }
 
 export function JobRow({ job, categoryName, isNew, selected = false, onSelect, onOpen }: JobRowProps) {
+  const { t, fmt } = useI18n();
   const applied = Boolean(useRoleMarks()[job.id]?.appliedAt);
-  const salary = formatSalary(job.salary);
-  const age = formatAge(job.postedAt ?? job.firstSeenAt);
-  const where = locationChips(job.locations, job.workplace, job.allowedCountries, 2).join(', ');
+  const salary = fmt.salary(job.salary);
+  const age = fmt.age(job.postedAt ?? job.firstSeenAt);
+  const where = fmt.locations(job.locations, job.workplace, job.allowedCountries, 2).join(', ');
   const facts = [
-    WORKPLACE_LABELS[job.workplace],
-    job.employmentType ? EMPLOYMENT_TYPE_LABELS[job.employmentType] : null,
-    job.seniority ? SENIORITY_LABELS[job.seniority] : null,
+    t.workplace[job.workplace],
+    job.employmentType ? t.employmentType[job.employmentType] : null,
+    job.seniority ? t.seniority[job.seniority] : null,
     // The catch-all category adds nothing to a card.
     job.category === 'other' ? null : categoryName,
   ].filter(Boolean);
@@ -41,7 +41,7 @@ export function JobRow({ job, categoryName, isNew, selected = false, onSelect, o
       <div className="job-card__body">
         <div className="job-card__company">
           {job.company}
-          {job.companyTier && <span className={`band band--${job.companyTier}`}>{PAY_BAND_LABELS[job.companyTier]}</span>}
+          {job.companyTier && <span className={`band band--${job.companyTier}`}>{t.payBand[job.companyTier]}</span>}
         </div>
         <h3 className="job-card__title">
           {/* Stretched over the card (see CSS) so the whole card is clickable. */}
@@ -68,7 +68,7 @@ export function JobRow({ job, categoryName, isNew, selected = false, onSelect, o
           )}
         </p>
         {(salary || job.skills.length > 0) && (
-          <ul className="job-card__chips" aria-label="Salary and stack">
+          <ul className="job-card__chips" aria-label={t.row.salaryAndStack}>
             {salary && <li className="salary">{salary}</li>}
             {job.skills.slice(0, 4).map((skill) => (
               <li key={skill} className="skill">
@@ -79,12 +79,12 @@ export function JobRow({ job, categoryName, isNew, selected = false, onSelect, o
         )}
       </div>
       <div className="job-card__meta">
-        {applied && <span className="applied-flag">Applied</span>}
-        {isNew && !applied && <span className="new-flag">New</span>}
-        {age && <span className="age">{age.replace(' ago', '')}</span>}
+        {applied && <span className="applied-flag">{t.row.applied}</span>}
+        {isNew && !applied && <span className="new-flag">{t.row.new}</span>}
+        {age && <span className="age">{age}</span>}
         {!job.applyDirect && (
-          <span className="via" title={`No employer posting found yet; applying goes through ${job.sourceName}`}>
-            via {job.sourceName}
+          <span className="via" title={t.row.viaTitle(job.sourceName)}>
+            {t.row.via(job.sourceName)}
           </span>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { useI18n } from '../i18n';
 import { Icon } from './Icon';
 
 interface FilterSheetProps {
@@ -10,6 +11,7 @@ interface FilterSheetProps {
 
 /** Full-screen filter sheet for small screens (a modal dialog). */
 export function FilterSheet({ open, onClose, resultLabel, children }: FilterSheetProps) {
+  const { t } = useI18n();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -26,9 +28,9 @@ export function FilterSheet({ open, onClose, resultLabel, children }: FilterShee
 
   return (
     // The native <dialog> handles Escape, focus trapping and the backdrop.
-    <dialog ref={dialogRef} className="sheet" aria-label="Filters" onClose={onClose} onCancel={onClose}>
+    <dialog ref={dialogRef} className="sheet" aria-label={t.filters.title} onClose={onClose} onCancel={onClose}>
       <div className="sheet__top">
-        <button type="button" className="icon-button" onClick={onClose} aria-label="Close filters">
+        <button type="button" className="icon-button" onClick={onClose} aria-label={t.filters.close}>
           <Icon name="close" />
         </button>
       </div>

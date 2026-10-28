@@ -5,6 +5,7 @@ import { StatusMessage } from './components/StatusMessage';
 import { TopBar } from './components/TopBar';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useStats } from './hooks/useStats';
+import { useI18n } from './i18n';
 import { listUrl, parseFilters } from './lib/filters';
 import { takeLastVisit } from './lib/lastVisit';
 import { matchRoute, navigate, useLocation } from './lib/router';
@@ -18,6 +19,7 @@ export default function App() {
   const { pathname, search } = useLocation();
   const route = matchRoute(pathname);
   const stats = useStats();
+  const { locale, t } = useI18n();
   // Read once per page load: "New" means first seen since the previous visit.
   const [lastVisit] = useState(takeLastVisit);
 
@@ -50,6 +52,10 @@ export default function App() {
     navigate(listUrl({ ...filters, q: searchInput }), { replace: route.name === 'jobs' });
   };
 
+  useEffect(() => {
+    document.documentElement.lang = locale;
+  }, [locale]);
+
   // "/" focuses the search, like most search-first tools.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -65,7 +71,7 @@ export default function App() {
   return (
     <>
       <a href="#main" className="skip-link">
-        Skip to results
+        {t.app.skipLink}
       </a>
       <TopBar
         lastUpdatedAt={stats?.lastUpdatedAt}
@@ -78,8 +84,8 @@ export default function App() {
       {route.name === 'saved' && <SavedPage />}
       {route.name === 'not-found' && (
         <main className="page" id="main">
-          <StatusMessage title="Page not found">
-            <Link href="/">Browse open roles</Link>
+          <StatusMessage title={t.app.notFound}>
+            <Link href="/">{t.app.browseRoles}</Link>
           </StatusMessage>
         </main>
       )}
