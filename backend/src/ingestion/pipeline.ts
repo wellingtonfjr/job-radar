@@ -166,10 +166,12 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
         if (result.complete) {
           // Guard against partial responses: a "complete" board that suddenly
           // lists under half of what was open is more likely an upstream
-          // glitch than mass hiring, so nothing is closed this run.
+          // glitch than mass hiring, so nothing is closed this run. Jobs the
+          // adapter filtered out on purpose still count as listed.
           const open = (openInFeed.get(source.id, result.feed) as { n: number }).n;
-          if (open >= MIN_FEED_FOR_DROP_GUARD && seen.size < open * DROP_GUARD_RATIO) {
-            summary.errors.push({ feed: result.feed, error: `listed ${seen.size} of ${open} open jobs; not closing any this run` });
+          const listed = seen.size + (result.skipped ?? 0);
+          if (open >= MIN_FEED_FOR_DROP_GUARD && listed < open * DROP_GUARD_RATIO) {
+            summary.errors.push({ feed: result.feed, error: `listed ${listed} of ${open} open jobs; not closing any this run` });
           } else {
             summary.closed += closeMissing.run({ now: startedAt, source: source.id, feed: result.feed, seenAt: startedAt }).changes;
           }

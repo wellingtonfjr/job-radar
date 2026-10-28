@@ -4,7 +4,12 @@
  * patterns are deliberately strict (word boundaries, disambiguation) because
  * a false "Go" or "R" tag is worse than a missing one.
  */
-const SKILLS: [string, RegExp][] = [
+type Matcher = RegExp | ((text: string) => boolean);
+
+/** Words that put a bare "Go" in a programming context. */
+const GO_CONTEXT = /\b(python|java|rust|kotlin|typescript|node(\.js)?|c\+\+|kubernetes|docker|microservices?|backend|back-end|apis?|software|programming)\b/i;
+
+const SKILLS: [string, Matcher][] = [
   ["JavaScript", /\bjavascript\b|(?<![.\w])js\b/i],
   ["TypeScript", /\btypescript\b/i],
   ["React", /\breact(\.js|js)?\b(?!\s+native)/i],
@@ -22,7 +27,14 @@ const SKILLS: [string, RegExp][] = [
   ["Spring", /\bspring\s?(boot|framework|cloud)\b|\bjava\s*\/\s*spring\b/i],
   ["Kotlin", /\bkotlin\b/i],
   ["Scala", /\bscala\b/i],
-  ["Go", /\bgolang\b|\bgo\b(?=\s*(?:,|\/|and|or|developer|engineer|services|backend|programming|language|\)))/i],
+  // "Golang", or a capitalized "Go" in a list or role ("Go, Rust", "Go developer")
+  // and only alongside other engineering words: "on the go, and" isn't a stack.
+  [
+    "Go",
+    (text) =>
+      /\bgolang\b/i.test(text) ||
+      (/\bGo\b(?=\s*(?:,|\/|and\b|or\b|[Dd]eveloper|[Ee]ngineer|services|backend|programming|language|\)))/.test(text) && GO_CONTEXT.test(text)),
+  ],
   ["Rust", /\brust\b/i],
   ["C++", /\bc\+\+/i],
   ["C#", /\bc#|\bc sharp\b/i],
@@ -64,5 +76,5 @@ const SKILLS: [string, RegExp][] = [
 
 export function extractSkills(title: string, tags: readonly string[], description: string | null): string[] {
   const text = [title, tags.join(", "), description ?? ""].join("\n");
-  return SKILLS.filter(([, pattern]) => pattern.test(text)).map(([name]) => name);
+  return SKILLS.filter(([, match]) => (typeof match === "function" ? match(text) : match.test(text))).map(([name]) => name);
 }

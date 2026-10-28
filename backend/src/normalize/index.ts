@@ -1,7 +1,7 @@
 import type { NormalizedJob, RawJob } from "../domain/job.js";
 import { classifyCategory, classifyEmploymentType, classifySeniority } from "./classify.js";
 import { cleanText, decodeEntities, htmlToText } from "./html.js";
-import { inferWorkplace, parseAllowedCountries } from "./location.js";
+import { inferWorkplace, parseAllowedCountries, withoutWorkModes } from "./location.js";
 import { extractPostingLinks } from "../resolve/postingUrls.js";
 import { extractSkills } from "./skills.js";
 import { annualUsd, extractSalaryFromDescription, parseSalaryText, validateSalary } from "./salary.js";
@@ -38,10 +38,12 @@ export function fingerprint(company: string, title: string): string {
 }
 
 /**
- * Résumé pools ("Banco de Talentos", "Talent Pool", "General Application")
- * aren't openings, so they are never listed.
+ * Résumé pools ("Banco de Talentos", "Talent Pool", "General Application",
+ * "Initiativbewerbung", "Candidature spontanée") aren't openings, so they are
+ * never listed.
  */
-const NOT_AN_OPENING = /\b(banco de talentos|talent (?:pool|community|network)|general application|open application|candidatura espont[aâ]nea|spontaneous application)\b/i;
+const NOT_AN_OPENING =
+  /\b(banco (?:de )?talentos|futuras oportunidades|talent (?:pool|community|network)|general application|open application|candidatura espont[aâ]nea|(?:spontaneous|unsolicited|speculative|initiative) application|initiativbewerbung|candidature spontan|open sollicitatie)\b/i;
 
 export function isOpening(title: string): boolean {
   return !NOT_AN_OPENING.test(title);
@@ -60,8 +62,9 @@ function toIsoDate(value: string | null | undefined): string | null {
 export function normalizeJob(source: string, feed: string, raw: RawJob): NormalizedJob {
   const title = cleanLabel(raw.title);
   const company = cleanLabel(raw.company);
-  const locations = Array.from(new Set(raw.locations.map(cleanLabel).filter(Boolean)));
-  const workplace = inferWorkplace(raw.workplace, locations, title);
+  const rawLocations = Array.from(new Set(raw.locations.map(cleanLabel).filter(Boolean)));
+  const workplace = inferWorkplace(raw.workplace, rawLocations, title);
+  const locations = withoutWorkModes(rawLocations);
   const hints = (raw.categoryHints ?? []).map(cleanLabel);
   const tags = Array.from(new Set((raw.tags ?? []).map(cleanLabel).filter((t) => t.length > 0 && t.length <= 40))).slice(0, 15);
 

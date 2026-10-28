@@ -141,6 +141,8 @@ const CITY_ALIASES: Record<string, string> = {
   "LOS ANGELES": "US",
   DENVER: "US",
   "WASHINGTON DC": "US",
+  // "Washington, D.C." after punctuation is stripped.
+  "WASHINGTON D C": "US",
   "SAN DIEGO": "US",
   ATLANTA: "US",
   MIAMI: "US",
@@ -271,6 +273,12 @@ const UNRESTRICTED_PATTERN = /\b(WORLDWIDE|ANYWHERE|GLOBAL|GLOBALLY|INTERNATIONA
 // English plus Portuguese/Spanish ("remoto", "home office", "teletrabalho", "híbrido").
 const REMOTE_PATTERN = /\b(remote|anywhere|worldwide|work from home|wfh|distributed|home[- ]based|telecommute|remoto|home office|teletrabalho)\b/i;
 const HYBRID_PATTERN = /\b(hybrid|h[íi]brido)\b/i;
+/**
+ * A location that only names a work mode ("Hybrid", "Remote", "On-site",
+ * "(Remoto)"), not a place.
+ */
+const WORK_MODE_ONLY =
+  /^[\s()[\]\-–—,/|]*(?:(?:fully|100%)\s+)?(?:remote|hybrid|on-?site|in[- ]office|office[- ]based|remote[- ]first|flexible|remoto|h[íi]brido|presencial|home office)(?:\s+(?:jobs?|work|working|only|first))?[\s()[\]\-–—,/|]*$/i;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -345,6 +353,14 @@ export function inferWorkplace(explicit: Workplace | null, locations: readonly s
   if (explicit === "onsite") return "onsite";
   if (texts.some((t) => REMOTE_PATTERN.test(t))) return "remote";
   return "onsite";
+}
+
+/**
+ * Drops entries that only name a work mode, so "Hybrid" isn't listed (or
+ * read) as a place. Run after `inferWorkplace`, which still needs them.
+ */
+export function withoutWorkModes(locations: readonly string[]): string[] {
+  return locations.filter((l) => !WORK_MODE_ONLY.test(l));
 }
 
 /** Splits a source's single free-text location field into display parts. */

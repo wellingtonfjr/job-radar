@@ -12,6 +12,12 @@ export interface FeedResult {
   feed: string;
   complete: boolean;
   jobs: RawJob[];
+  /**
+   * Jobs the feed listed but the adapter deliberately left out (filtered as
+   * off-topic). They count as "listed" for the pipeline's drop guard, so a
+   * new filter closes its stored jobs instead of looking like a broken feed.
+   */
+  skipped?: number;
 }
 
 export interface FeedError {

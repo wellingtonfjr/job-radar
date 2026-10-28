@@ -2,8 +2,9 @@ import type { RawJob } from "../src/domain/job.js";
 import { describe, expect, it } from "vitest";
 import { classifyCategory, classifyEmploymentType, classifySeniority } from "../src/normalize/classify.js";
 import { htmlToText } from "../src/normalize/html.js";
-import { fingerprint, normalizeJob } from "../src/normalize/index.js";
-import { inferWorkplace, parseAllowedCountries, splitLocations } from "../src/normalize/location.js";
+import { fingerprint, isOpening, normalizeJob } from "../src/normalize/index.js";
+import { detectLanguage } from "../src/normalize/language.js";
+import { inferWorkplace, parseAllowedCountries, splitLocations, withoutWorkModes } from "../src/normalize/location.js";
 import { annualUsd, extractSalaryFromDescription, parseSalaryText } from "../src/normalize/salary.js";
 import { extractSkills } from "../src/normalize/skills.js";
 import { toSearchKey } from "../src/normalize/text.js";
@@ -65,6 +66,9 @@ describe("parseAllowedCountries", () => {
     [["Bonn"], null],
     [["LATAM"], expect.arrayContaining(["BR", "MX", "AR"]) as unknown as string[]],
     [["Americas, Israel"], expect.arrayContaining(["US", "BR", "IL"]) as unknown as string[]],
+    [["Washington, D.C."], ["US"]],
+    [["Washington DC"], ["US"]],
+    [["Hybrid"], null],
   ])("%j", (input, expected) => {
     expect(parseAllowedCountries(input)).toEqual(expected);
   });
@@ -81,6 +85,17 @@ describe("inferWorkplace", () => {
     expect(inferWorkplace(null, ["Remote, US"], "Engineer")).toBe("remote");
     expect(inferWorkplace(null, ["London"], "Engineer")).toBe("onsite");
     expect(inferWorkplace(null, [], "Engineer (Remote)")).toBe("remote");
+  });
+});
+
+describe("withoutWorkModes", () => {
+  it("drops entries that only name a work mode, not a place", () => {
+    expect(withoutWorkModes(["Hybrid", "London", "Remote", "On-site", "(Remoto)", "Fully Remote", "Híbrido"])).toEqual(["London"]);
+    expect(withoutWorkModes(["Hybrid - Berlin", "Remote, US", "Remote Sensing Lab, Oslo"])).toEqual([
+      "Hybrid - Berlin",
+      "Remote, US",
+      "Remote Sensing Lab, Oslo",
+    ]);
   });
 });
 
@@ -111,7 +126,39 @@ describe("classification", () => {
     ["Data Engineer, Marketing", "data"],
     ["Softwareentwickler*in Web", "software-development"],
     ["Forklift Operator", "other"],
+    ["Cybersecurity Lead - Sênior (Remoto)", "security"],
   ])("category of %s", (title, expected) => {
+    expect(classifyCategory(title)).toBe(expected);
+  });
+
+  // InHire titles that used to land in "other" (#6).
+  it.each([
+    ["Analista de Contas a Receber Pl.", "finance"],
+    ["Analista de Risco de crédito", "finance"],
+    ["Gerente de Transformação e Projetos Digitais", "operations"],
+    ["Analista de Projetos Pleno", "operations"],
+    ["Coordenador(a) de Sistemas (Desenvolvimento para Portais)", "software-development"],
+    ["Profissional de Desenvolvimento Júnior", "software-development"],
+    ["Arquiteto Corporativo Sênior | Híbrido | Blumenau/SC", "software-development"],
+    ["SAP SD Sênior / Especialista", "software-development"],
+    ["Especialista de Plataforma de IA", "ai-ml"],
+    ["Engenheiro(a) de Automação e IA Sênior", "ai-ml"],
+    ["Analista de Governança de TI Pleno", "devops"],
+    ["Coordenador(a) de FinOps", "devops"],
+    ["Analista de Analytic Sênior - Remoto", "data"],
+    ["Analista de Produtos Sênior", "product"],
+    ["PO — E-commerce e B2B", "product"],
+    ["Analista de Implantação Sênior | Remoto", "customer-support"],
+    ["Analista de Marketplace Júnior", "marketing"],
+    ["Analista de CRM | CRM & Martech", "marketing"],
+    ["Gerente de Contas Sr- Foco Shopee", "sales"],
+    ["Especialista Desenvolvimento de Negócios I (Aquisição)", "sales"],
+    ["Analista de Remuneração e Benefícios Pleno", "hr"],
+    ["Analista de Contratos Sênior", "legal"],
+    ["Roteirista Pleno", "writing"],
+    ["Especialista Red Team", "security"],
+    ["Profissional de Engenharia Mecânica", "other"],
+  ])("pt-BR category of %s", (title, expected) => {
     expect(classifyCategory(title)).toBe(expected);
   });
 
@@ -130,6 +177,11 @@ describe("classification", () => {
     ["Software Engineering Intern", "intern"],
     ["Software Engineer II", "mid"],
     ["Software Engineer", null],
+    ["Desenvolvedor Backend Júnior", "junior"],
+    ["Analista de Marketing Pleno", "mid"],
+    ["Analista Financeiro PL", "mid"],
+    ["Engenheira de Dados Sênior", "senior"],
+    ["Analista N3 Produção (PL/SQL)", null],
   ])("seniority of %s", (title, expected) => {
     expect(classifySeniority(title)).toBe(expected);
   });
@@ -169,10 +221,44 @@ describe("extractSkills", () => {
     );
     expect(extractSkills("Java Engineer", [], "JavaScript is not required")).toEqual(["JavaScript", "Java"]);
     expect(extractSkills("Account Executive", [], "Go win deals and let's go!")).toEqual([]);
+    expect(extractSkills("Creative Strategist", [], "Content on the go, and ideas. Go, and make it happen.")).toEqual([]);
+    expect(extractSkills("Backend Engineer", [], "Our services are written in Go, Rust and Python.")).toEqual(["Python", "Go", "Rust"]);
+    expect(extractSkills("Go Developer", [], "Build APIs")).toEqual(["Go"]);
+    expect(extractSkills("Engineer", [], "We use golang")).toEqual(["Go"]);
     expect(extractSkills("Clinical Trial Manager", [], "Knowledge of GCP and ICH guidelines")).toEqual([]);
     expect(extractSkills("Platform Engineer", [], "Experience with GCP or AWS")).toEqual(["AWS", "GCP"]);
     expect(extractSkills("Experiential Producer", [], "Ideas that spark joy")).toEqual([]);
     expect(extractSkills("Data Engineer", [], "Kafka and Spark pipelines")).toEqual(["Kafka", "Spark"]);
+  });
+});
+
+describe("detectLanguage", () => {
+  it.each([
+    ["We are looking for an engineer who will join our team and work with you on the platform.", "en"],
+    ["Wir suchen eine erfahrene Person für unser Team in Berlin, die mit uns die Plattform weiterentwickelt und auch Verantwortung übernimmt.", "de"],
+    ["Wij zoeken een collega voor ons team. Je werkt met een groep van experts aan het platform en bent ook verantwoordelijk voor de planning.", "nl"],
+    ["Nous recherchons une personne pour notre équipe. Vous travaillerez avec les équipes produit et des clients sur la plateforme.", "fr"],
+    ["Buscamos una persona para nuestro equipo con experiencia en ventas y por eso los candidatos con inglés son bienvenidos.", "es"],
+    ["Estamos em busca de uma pessoa para a vaga de analista com foco em dados e você vai trabalhar com os times da empresa na área.", "pt"],
+    ["Senior Engineer", null],
+    ["", null],
+  ])("%s", (text, expected) => {
+    expect(detectLanguage(text)).toBe(expected);
+  });
+});
+
+describe("isOpening", () => {
+  it.each([
+    ["Initiativbewerbung (m/w/d)", false],
+    ["Spontaneous Application", false],
+    ["Initiative application - Engineering", false],
+    ["Candidature spontanée", false],
+    ["BANCO TALENTOS - SOLUTIS", false],
+    ["VR Futuras Oportunidades", false],
+    ["Senior Backend Engineer", true],
+    ["Application Engineer", true],
+  ])("%s → %s", (title, expected) => {
+    expect(isOpening(title)).toBe(expected);
   });
 });
 
@@ -212,6 +298,7 @@ describe("normalizeJob", () => {
       description: "React and TypeScript",
     });
     // Future dates are clamped to "now".
+    expect(job.locations).toEqual(["USA", "Canada"]);
     expect(Date.parse(job.postedAt as string)).toBeLessThanOrEqual(Date.now());
   });
 });
@@ -250,5 +337,18 @@ describe("safeUrl", () => {
     expect(normalizeJob("x", "all", { ...base, url: "javascript:alert(1)" }).url).toBe("");
     expect(normalizeJob("x", "all", { ...base, url: "https://acme.com/1", companyLogo: "data:image/svg+xml,<svg onload=alert(1)>" }).companyLogo).toBeNull();
     expect(normalizeJob("x", "all", { ...base, url: "https://acme.com/1", companyLogo: "http://cdn.acme.com/logo.png" }).companyLogo).toBe("https://cdn.acme.com/logo.png");
+  });
+});
+
+describe("normalizeJob locations", () => {
+  const base: RawJob = { externalId: "1", title: "Engineer", company: "Acme", url: "https://example.com/1", locations: [], workplace: null };
+
+  it("keeps a work-mode-only location as the workplace, not as a place", () => {
+    const job = normalizeJob("greenhouse", "acme", { ...base, locations: ["Hybrid", "London"] });
+    expect(job).toMatchObject({ workplace: "hybrid", locations: ["London"], allowedCountries: ["GB"] });
+  });
+
+  it("maps Washington, D.C. to the US", () => {
+    expect(normalizeJob("lever", "acme", { ...base, locations: ["Washington, D.C."] }).allowedCountries).toEqual(["US"]);
   });
 });
