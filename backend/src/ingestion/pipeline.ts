@@ -135,7 +135,11 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
 
   const summary: SourceRunSummary = { source: source.id, status: "ok", fetched: 0, inserted: 0, closed: 0, errors: [] };
   try {
-    const outcome = await source.fetchJobs();
+    const storedDescription = db.prepare("SELECT description FROM jobs WHERE source = ? AND external_id = ?");
+    const outcome = await source.fetchJobs({
+      storedDescription: (externalId) =>
+        (storedDescription.get(source.id, externalId) as { description: string | null } | undefined)?.description ?? null,
+    });
     summary.errors = outcome.errors;
 
     const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");

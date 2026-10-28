@@ -30,6 +30,12 @@ export interface FetchOutcome {
   errors: FeedError[];
 }
 
+/** What the pipeline already knows, for adapters that fetch details sparingly. */
+export interface FetchContext {
+  /** The description stored for this source's posting, or null if none yet. */
+  storedDescription(externalId: string): string | null;
+}
+
 export type SourceKind = "ats" | "aggregator";
 
 export interface SourceAdapter {
@@ -49,5 +55,5 @@ export interface SourceAdapter {
    * are closed instead of lingering until they go stale.
    */
   feeds?: readonly string[];
-  fetchJobs(): Promise<FetchOutcome>;
+  fetchJobs(context?: FetchContext): Promise<FetchOutcome>;
 }
