@@ -120,8 +120,10 @@ function toRow(job: NormalizedJob, sourceRank: number, seenAt: string): Record<s
 }
 
 function isDue(db: Db, source: SourceAdapter, now: Date, floorMinutes = 0): boolean {
+  // Failed runs don't count, and neither do runs that never finished (the
+  // process stopped mid-run, e.g. for a deploy): both are retried right away.
   const last = db
-    .prepare("SELECT started_at FROM source_runs WHERE source = ? AND status != 'error' ORDER BY started_at DESC LIMIT 1")
+    .prepare("SELECT started_at FROM source_runs WHERE source = ? AND status NOT IN ('error', 'running') ORDER BY started_at DESC LIMIT 1")
     .get(source.id) as { started_at: string } | undefined;
   if (!last) return true;
   const interval = Math.max(source.minIntervalMinutes, floorMinutes);
