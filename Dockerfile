@@ -7,7 +7,7 @@
 # final stage gets only what the app needs to run.
 
 # ───────────────────────── Stage 1: build ─────────────────────────
-FROM node:22-bookworm-slim AS build
+FROM node:26-bookworm-slim AS build
 
 # Compilers for better-sqlite3's native module, used only if a prebuilt
 # binary can't be downloaded. They stay in this stage only.
@@ -32,7 +32,7 @@ RUN npm --prefix frontend run build && npm --prefix backend run build
 RUN npm --prefix backend prune --omit=dev
 
 # ───────────────────────── Stage 2: runtime ─────────────────────────
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 
 ENV NODE_ENV=production \
     PORT=8080 \
