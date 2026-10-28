@@ -2,25 +2,23 @@ import type { Db } from "../db/index.js";
 import { companyKey } from "../normalize/index.js";
 import { errorMessage, mapLimit } from "../sources/http.js";
 import { discoverBoard, loadBoard, matchPosting, type Board } from "./atsDiscovery.js";
-import { remotiveApplyLink } from "./listingPages.js";
 import type { ResolverNet } from "./net.js";
 
 /**
- * Job boards (Remotive, Himalayas, Jobicy, Arbeitnow) link to their own
+ * Job boards (Himalayas, Jobicy, Arbeitnow) link to their own
  * listing page. This finds the employer's own posting instead, trying, in
  * order of reliability:
  *
  *   1. ats-match      the same opening on an ATS board we already ingest
  *   2. description    an ATS job link written in the job description
- *   3. listing-page   Remotive's public "Apply for this position" link
- *   4. ats-discovery  the company's public ATS board (Greenhouse, Lever,
+ *   3. ats-discovery  the company's public ATS board (Greenhouse, Lever,
  *                     Ashby, Workable, Recruitee) with a same-title posting
  *
  * Every link is verified to still load before it's used. Jobs where nothing
  * verifiable is found keep the board's listing, and are retried later.
  */
 
-export type ApplyMethod = "ats-match" | "description" | "listing-page" | "ats-discovery";
+export type ApplyMethod = "ats-match" | "description" | "ats-discovery";
 
 export interface ResolveOptions {
   now: Date;
@@ -88,7 +86,7 @@ export async function resolveApplyLinks(db: Db, net: ResolverNet, options: Resol
 
   const summary: ResolveSummary = {
     examined: 0,
-    resolved: { "ats-match": 0, description: 0, "listing-page": 0, "ats-discovery": 0 },
+    resolved: { "ats-match": 0, description: 0, "ats-discovery": 0 },
     unresolved: 0,
     deferred: 0,
     errors: [],
@@ -135,11 +133,6 @@ export async function resolveApplyLinks(db: Db, net: ResolverNet, options: Resol
     for (const link of links.slice(0, 2)) {
       const url = await verified(link);
       if (url) return { url, method: "description" };
-    }
-
-    if (job.source === "remotive") {
-      const url = await verified(await remotiveApplyLink(net, job.url));
-      if (url) return { url, method: "listing-page" };
     }
 
     const board = boardFor(job.company);

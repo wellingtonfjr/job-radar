@@ -34,7 +34,7 @@ still open, and sends you to the employer's own posting whenever it can.
 
 ```
 Employer hiring pages                 Job boards
-(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Get on Board, Remotive)
+(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Get on Board)
               │                                   │
               └──────────── twice a day ──────────┘
                                │
@@ -87,11 +87,14 @@ interval a source will ever be polled at, even with a smaller setting.
 | Jobicy | Aggregator | Up to 500 remote jobs | 2h |
 | Arbeitnow | Aggregator | Full feed (Europe-heavy), paged to the end with a pause between pages | 1h |
 | Get on Board | Aggregator (Latin America) | Every role in the tech categories (programming, devops/QA, data, ML/AI, mobile, design/UX, cybersecurity), paged to the end with a 1 s pause between pages. Public API, no key; no rate limit or attribution terms are published, and listings link to the role's page on getonbrd.com | 1h |
-| Remotive | Aggregator | Public sample feed only (~15 jobs, delayed 24h) | 6h, per its terms |
 
 Aggregator jobs link back to the aggregator's posting, as their API terms
-require. Remotive's free API is deliberately small; most volume comes from the
-ATS boards.
+require. Most volume comes from the ATS boards.
+
+Removed sources: Remotive (its free feed had ~10 roles and its terms restrict
+reuse of the listings). When a source is removed from
+`backend/src/sources/index.ts`, its open roles are closed at the next
+ingestion cycle.
 
 ### Direct links to the employer
 
@@ -103,8 +106,7 @@ each board listing. It tries these in order of reliability:
 2. **description:** a job-specific ATS link inside the description (Lever,
    Greenhouse, Ashby, Workable, Recruitee, SmartRecruiters, Personio,
    Teamtailor, Workday…). Careers homepages don't count.
-3. **listing-page:** Remotive's public "Apply for this position" link.
-4. **ats-discovery:** the company's public board, found by name ("Lemon.io"
+3. **ats-discovery:** the company's public board, found by name ("Lemon.io"
    → `lemonio`, `lemon-io`, `lemon`) on Greenhouse, Lever, Ashby, Workable
    and Recruitee. It's used only if that board has a posting with the same
    title; gender markers and "(Remote)" are ignored, every other qualifier
@@ -120,10 +122,6 @@ click-tracking endpoint (its terms ask apply buttons to use the feed URL),
 Himalayas blocks automated requests, and many Arbeitnow employers take
 applications only through Arbeitnow's own form. Those listings keep
 "Apply on <board>" until the posting is found on the employer's board.
-
-> Remotive's API terms ask listings to link back to Remotive. job-radar links
-> Apply to the employer but keeps a visible "Listed on Remotive" credit link.
-> Review their terms before deploying publicly.
 
 **Adding a company:** find its careers URL (`boards.greenhouse.io/{token}`,
 `jobs.lever.co/{token}`, `jobs.ashbyhq.com/{token}` or `{token}.inhire.app`)
@@ -290,7 +288,7 @@ after this many days without being seen in their feed.
 
 | Sources | Window | Setting |
 |---|---|---|
-| Job boards (Himalayas, Jobicy, Arbeitnow, Get on Board, Remotive) | 14 days | `JOB_BOARD_STALE_AFTER_DAYS` |
+| Job boards (Himalayas, Jobicy, Arbeitnow, Get on Board) | 14 days | `JOB_BOARD_STALE_AFTER_DAYS` |
 | Everything else (employer ATS boards) | 30 days | `STALE_AFTER_DAYS` |
 
 Job-board roles the liveness check has verified keep the 30-day window, since
