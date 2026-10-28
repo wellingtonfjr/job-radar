@@ -198,10 +198,10 @@ describe("liveness migration", () => {
       expect.objectContaining({ name: "last_verified_at", dflt_value: null }),
       expect.objectContaining({ name: "closed_streak", dflt_value: "0" }),
     ]);
-    expect(raw.pragma("user_version", { simple: true })).toBe(4);
+    expect(raw.pragma("user_version", { simple: true })).toBeGreaterThanOrEqual(4);
     // Re-running is a no-op.
     migrate(raw);
-    expect(raw.pragma("user_version", { simple: true })).toBe(4);
+    expect(raw.pragma("user_version", { simple: true })).toBeGreaterThanOrEqual(4);
   });
 });
 

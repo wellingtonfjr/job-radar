@@ -3,6 +3,7 @@ import path from "node:path";
 import express, { type ErrorRequestHandler, type Request } from "express";
 import { createAccuracyRouter } from "./api/accuracy.js";
 import { createJobsRouter } from "./api/jobs.js";
+import { createReportsRouter, type ReportQueue } from "./api/reports.js";
 import { createStatsRouter } from "./api/stats.js";
 import { DEFAULT_RATE_LIMIT_PER_MINUTE } from "./config.js";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
@@ -37,12 +38,31 @@ export interface AppOptions {
   rateLimitPerMinute?: number;
   /** Public base URL (no trailing slash) for the sitemap and link previews. */
   siteUrl?: string;
+  /** Checks reported roles; without one, "Role closed?" reports are only recorded. */
+  reportQueue?: ReportQueue;
+  /** Salt for the stored hash of a reporter's IP. */
+  reportIpSalt?: string;
+  /** "Role closed?" reports per visitor per hour. */
+  reportsPerHour?: number;
 }
 
 /** A role page's path; the id is URL-encoded (see frontend/src/lib/router.ts). */
 const JOB_PAGE = /^\/jobs\/([^/]+)$/;
 
-export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE, siteUrl = DEFAULT_SITE_URL }: AppOptions = {}) {
+const NO_CHECKS: ReportQueue = { enqueue: () => {}, idle: () => Promise.resolve() };
+
+export function createApp(
+  db: Db,
+  {
+    corsOrigin,
+    staticDir,
+    rateLimitPerMinute = DEFAULT_RATE_LIMIT_PER_MINUTE,
+    siteUrl = DEFAULT_SITE_URL,
+    reportQueue = NO_CHECKS,
+    reportIpSalt,
+    reportsPerHour,
+  }: AppOptions = {},
+) {
   const app = express();
   app.disable("x-powered-by");
 
@@ -118,6 +138,7 @@ export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = 
   });
 
   app.use("/api", apiLimiter);
+  app.use("/api/jobs", createReportsRouter(db, { queue: reportQueue, ipSalt: reportIpSalt, reportsPerHour, clientIp }));
   app.use("/api/jobs", createJobsRouter(db, siteUrl));
   app.use("/api/stats", createStatsRouter(db));
   app.use("/api/accuracy", createAccuracyRouter(db));

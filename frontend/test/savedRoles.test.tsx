@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
 import { JobDetailView } from '../src/components/JobDetailView';
 import { JobRow } from '../src/components/JobRow';
-import { makeDetail, makeJob, stats } from './fixtures';
+import { makeAccuracy, makeDetail, makeJob, stats } from './fixtures';
 
 const STORAGE_KEY = 'job-radar:roleMarks';
 
@@ -100,7 +100,9 @@ describe('Saved view', () => {
         const url = String(input);
         const body = url.startsWith('/api/stats')
           ? stats
-          : { jobs: [makeJob()], total: 1, newLast7Days: 0, page: 1, pageSize: 20, hasMore: false };
+          : url.startsWith('/api/accuracy')
+            ? makeAccuracy(null)
+            : { jobs: [makeJob()], total: 1, newLast7Days: 0, page: 1, pageSize: 20, hasMore: false };
         return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }),
     );

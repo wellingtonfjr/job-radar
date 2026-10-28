@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../src/App';
-import { makeDetail, makeJob, stats } from './fixtures';
+import { makeAccuracy, makeDetail, makeJob, stats } from './fixtures';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -32,6 +32,7 @@ describe('App', () => {
         const url = String(input);
         requests.push(url);
         if (url.startsWith('/api/stats')) return jsonResponse(stats);
+        if (url.startsWith('/api/accuracy')) return jsonResponse(makeAccuracy(0.97));
         if (url.startsWith('/api/jobs/greenhouse%3A1')) return jsonResponse(makeDetail());
         if (url.startsWith('/api/jobs/missing')) return jsonResponse({ error: 'Job not found' }, 404);
         if (url.startsWith('/api/jobs')) {
@@ -54,6 +55,7 @@ describe('App', () => {
     render(<App />);
     expect(await screen.findByText('Senior Frontend Engineer')).toBeInTheDocument();
     expect(screen.getByText('Product Designer')).toBeInTheDocument();
+    expect(await screen.findByText('97% of sampled roles verified open last week')).toBeInTheDocument();
 
     const sidebar = screen.getByRole('complementary', { name: 'Filters' });
     await userEvent.click(await within(sidebar).findByRole('checkbox', { name: /Design/ }));
@@ -81,7 +83,7 @@ describe('App', () => {
 
   it('counts new roles within the filters in the header', async () => {
     render(<App />);
-    const summary = await screen.findByText(/verified open/);
+    const summary = await screen.findByText(/verified open ·/);
     expect(summary).toHaveTextContent('2 verified open · 1 new this week');
 
     const sidebar = screen.getByRole('complementary', { name: 'Filters' });

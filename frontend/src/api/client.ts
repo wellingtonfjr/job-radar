@@ -1,4 +1,4 @@
-import type { JobDetail, JobsResponse, Stats } from './types';
+import type { Accuracy, JobDetail, JobsResponse, ReportResult, Stats } from './types';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -18,9 +18,13 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 const UNREACHABLE = "Can't reach the job-radar API. Is the backend running (npm run dev in backend/)?";
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  return requestJson<T>(path, { signal, headers: { Accept: 'application/json' } });
+}
+
+async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, { signal, headers: { Accept: 'application/json' } });
+    res = await fetch(`${API_BASE}${path}`, init);
   } catch (err) {
     if (err instanceof DOMException && err.name === 'AbortError') throw err;
     throw new ApiError(0, UNREACHABLE, true);
@@ -55,4 +59,18 @@ export function fetchJob(id: string, signal?: AbortSignal): Promise<JobDetail> {
 
 export function fetchStats(signal?: AbortSignal): Promise<Stats> {
   return getJson<Stats>('/api/stats', signal);
+}
+
+export function fetchAccuracy(signal?: AbortSignal): Promise<Accuracy> {
+  return getJson<Accuracy>('/api/accuracy', signal);
+}
+
+/** "Role closed?": asks the API to re-check the role with the employer. */
+export function reportClosed(id: string): Promise<ReportResult> {
+  return requestJson<ReportResult>(`/api/jobs/${encodeURIComponent(id)}/report`, {
+    method: 'POST',
+    // JSON on purpose: the API refuses form posts, which other sites could forge.
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: '{}',
+  });
 }

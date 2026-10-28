@@ -41,6 +41,10 @@ export interface Job {
   expiresAt: string | null;
   firstSeenAt: string;
   lastSeenAt: string;
+  /** Last check against the employer's own job board, if any. */
+  lastVerifiedAt: string | null;
+  /** When we last confirmed the role is listed (the later of lastVerifiedAt and lastSeenAt). */
+  checkedAt: string;
 }
 
 export interface JobDetail extends Job {
@@ -59,6 +63,18 @@ export interface JobsResponse {
   page: number;
   pageSize: number;
   hasMore: boolean;
+}
+
+/** The latest accuracy audit (only what the UI uses). */
+export interface Accuracy {
+  run: { id: number; startedAt: string; finishedAt: string } | null;
+  /** openPrecision is null until an audit verified enough roles recently. */
+  summary: { verified: number; openPrecision: number | null };
+}
+
+/** The answer to a "Role closed?" report. */
+export interface ReportResult {
+  status: 'checking' | 'already-reported' | 'closed';
 }
 
 export interface SourceStatus {

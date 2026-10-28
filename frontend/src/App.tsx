@@ -4,6 +4,7 @@ import { SourcesFooter } from './components/SourcesFooter';
 import { StatusMessage } from './components/StatusMessage';
 import { TopBar } from './components/TopBar';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
+import { useAccuracy } from './hooks/useAccuracy';
 import { useStats } from './hooks/useStats';
 import { useI18n } from './i18n';
 import { listUrl, parseFilters } from './lib/filters';
@@ -19,6 +20,7 @@ export default function App() {
   const { pathname, search } = useLocation();
   const route = matchRoute(pathname);
   const stats = useStats();
+  const accuracy = useAccuracy();
   const { locale, t } = useI18n();
   // Read once per page load: "New" means first seen since the previous visit.
   const [lastVisit] = useState(takeLastVisit);
@@ -89,7 +91,7 @@ export default function App() {
           </StatusMessage>
         </main>
       )}
-      <SourcesFooter sources={stats?.sources} />
+      <SourcesFooter sources={stats?.sources} openPrecision={accuracy?.summary.openPrecision} />
     </>
   );
 }

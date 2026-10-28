@@ -3,13 +3,15 @@ import { useI18n } from '../i18n';
 
 interface SourcesFooterProps {
   sources: SourceStatus[] | undefined;
+  /** Open precision from the latest audit; null or undefined hides it. */
+  openPrecision?: number | null;
 }
 
 /**
  * Where every role comes from and how fresh each source is, plus the
  * attribution the job boards' terms ask for.
  */
-export function SourcesFooter({ sources }: SourcesFooterProps) {
+export function SourcesFooter({ sources, openPrecision }: SourcesFooterProps) {
   const { t, fmt } = useI18n();
   return (
     <footer className="footer" id="sources">
@@ -17,6 +19,7 @@ export function SourcesFooter({ sources }: SourcesFooterProps) {
         <div className="footer__about">
           <p className="footer__brand">job-radar</p>
           <p>{t.footer.about}</p>
+          {openPrecision != null && <p className="footer__trust">{t.footer.precision(fmt.percent(openPrecision))}</p>}
         </div>
         {sources && (
           <table className="sources">

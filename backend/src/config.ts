@@ -7,6 +7,9 @@ const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "
 /** Default API requests per visitor per minute (see rateLimitPerMinute below). */
 export const DEFAULT_RATE_LIMIT_PER_MINUTE = 180;
 
+/** Default "Role closed?" reports per visitor per hour (see reportsPerHour below). */
+export const DEFAULT_REPORTS_PER_HOUR = 10;
+
 function intFromEnv(name: string, fallback: number): number {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -73,6 +76,14 @@ export const config = {
    * mobile users share one public IP.
    */
   rateLimitPerMinute: intFromEnv("RATE_LIMIT_PER_MINUTE", DEFAULT_RATE_LIMIT_PER_MINUTE),
+  /**
+   * Salt for the hash a "Role closed?" report stores instead of the
+   * visitor's IP. Set it in production (fly secrets set REPORT_IP_SALT=…);
+   * unset, a public dev salt is used.
+   */
+  reportIpSalt: process.env.REPORT_IP_SALT || undefined,
+  /** "Role closed?" reports allowed per visitor (IP) per hour. */
+  reportsPerHour: intFromEnv("REPORTS_PER_HOUR", DEFAULT_REPORTS_PER_HOUR),
   /** Public base URL, no trailing slash: used in the sitemap and link previews. */
   siteUrl: (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, ""),
 };
