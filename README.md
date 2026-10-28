@@ -82,6 +82,7 @@ interval a source will ever be polled at, even with a smaller setting.
 | Source | Kind | Scope per run | Minimum interval |
 | --- | --- | --- | --- |
 | Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts` | 1h |
+| SmartRecruiters | Employer ATS | Full board for each company in `companies.ts` (IT roles only for Bosch and Delivery Hero); descriptions fetched for new postings, at most 500 a run | 2h |
 | InHire | Employer ATS (Brazil) | Remote and hybrid roles of each company in `companies.ts` (one detail request per role) | 6h |
 | Himalayas | Aggregator | Newest 1,000 remote jobs (the feed has 100k+) | 1h |
 | Jobicy | Aggregator | Up to 500 remote jobs | 2h |
@@ -125,7 +126,8 @@ applications only through Arbeitnow's own form. Those listings keep
 > Review their terms before deploying publicly.
 
 **Adding a company:** find its careers URL (`boards.greenhouse.io/{token}`,
-`jobs.lever.co/{token}`, `jobs.ashbyhq.com/{token}` or `{token}.inhire.app`)
+`jobs.lever.co/{token}`, `jobs.ashbyhq.com/{token}`, `{token}.inhire.app` or
+`jobs.smartrecruiters.com/{token}/…`)
 and add `{ token, name }` to the matching list in `companies.ts`. Only add
 the employer's own board: recruiting agencies and RPOs that post for other
 companies stay out. Removing a company closes its jobs on the next run.
@@ -247,7 +249,7 @@ on `/health` is the upgrade if minute-level alerts matter.
 Every `ACCURACY_AUDIT_DAYS` (default 7; `0` disables) the scheduler re-checks,
 per source, a random sample of about 50 roles we show as open and 20 we closed
 in the last 7 days against the employer's own ATS API (`npm run audit:accuracy`
-runs one by hand). Greenhouse and Lever postings are looked up by id (200 =
+runs one by hand). Greenhouse, Lever and SmartRecruiters postings are looked up by id (200 =
 open, 404 = closed); Ashby postings in their board's list. Job-board roles are
 checked through the ATS posting their apply link points to; anything else is
 `unknown`, never assumed open. Job-board pages aren't used: several answer 200
@@ -269,11 +271,11 @@ Only a complete feed closes missing roles at the next run. Himalayas is never
 read in full, and Jobicy and Arbeitnow aren't when they hit their page cap, so
 the scheduler re-checks their open roles against the employer's ATS with the
 audit's verifiers, for roles whose apply link (or a link in the description)
-points to a Greenhouse, Lever or Ashby posting.
+points to a Greenhouse, Lever, Ashby or SmartRecruiters posting.
 
 - **Budget:** `LIVENESS_REQUESTS_PER_HOUR` (default 300; `0` disables). Each
   tick spends what has accrued since the last check, at most one hour's
-  worth. A Greenhouse or Lever posting costs one request; an Ashby board one
+  worth. A Greenhouse, Lever or SmartRecruiters posting costs one request; an Ashby board one
   request for all its roles. Requests go two at a time, at least 1 s apart per
   host, with a 15 s timeout, identified as `job-radar-liveness-check`.
 - **Rotation:** roles never checked go first, then the oldest check, so every
