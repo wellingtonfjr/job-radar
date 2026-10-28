@@ -23,6 +23,12 @@ export interface PostingRef {
 
 export const AUDIT_USER_AGENT = "job-radar-accuracy-audit (+https://radar-de-vagas.fly.dev)";
 
+/**
+ * Consecutive "closed" verdicts after which the liveness check closes a role
+ * (see liveness.ts). One could be a blip; two, hours apart, aren't.
+ */
+export const CLOSED_VERDICTS_TO_CLOSE = 2;
+
 /** Posting URLs whose board and id can be checked through the ATS API. */
 const URL_PATTERNS: { provider: AtsProvider; pattern: RegExp }[] = [
   { provider: "greenhouse", pattern: /greenhouse\.io\/([^/?#]+)\/jobs\/(\d+)/i },
@@ -58,7 +64,7 @@ export interface AuditResponse {
 
 /** The network calls the audit makes; swapped for fakes in tests. */
 export interface AuditNet {
-  /** GET with the audit's User-Agent; null on a network error or timeout. */
+  /** GET with an identifying User-Agent; null on a network error or timeout. */
   get(url: string): Promise<AuditResponse | null>;
 }
 
@@ -67,6 +73,7 @@ export interface AuditNetOptions {
   /** Minimum time between two requests to the same host. */
   minGapMs?: number;
   timeoutMs?: number;
+  userAgent?: string;
 }
 
 /**
@@ -74,7 +81,12 @@ export interface AuditNetOptions {
  * the same host spaced at least `minGapMs` apart (on top of the audit's low
  * concurrency), so no provider sees a burst from us.
  */
-export function createAuditNet({ fetch = globalThis.fetch, minGapMs = 1_000, timeoutMs = 15_000 }: AuditNetOptions = {}): AuditNet {
+export function createAuditNet({
+  fetch = globalThis.fetch,
+  minGapMs = 1_000,
+  timeoutMs = 15_000,
+  userAgent = AUDIT_USER_AGENT,
+}: AuditNetOptions = {}): AuditNet {
   const nextSlot = new Map<string, number>();
 
   async function waitTurn(host: string): Promise<void> {
@@ -89,7 +101,7 @@ export function createAuditNet({ fetch = globalThis.fetch, minGapMs = 1_000, tim
       await waitTurn(new URL(url).host);
       try {
         const res = await fetch(url, {
-          headers: { "User-Agent": AUDIT_USER_AGENT, Accept: "application/json" },
+          headers: { "User-Agent": userAgent, Accept: "application/json" },
           signal: AbortSignal.timeout(timeoutMs),
         });
         // Read the whole body: an Ashby board can be several MB, and a

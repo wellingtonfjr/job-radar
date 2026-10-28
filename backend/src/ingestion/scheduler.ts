@@ -1,10 +1,11 @@
 import { isAuditDue, logAudit, runAccuracyAudit, type AuditSummary } from "../accuracy/audit.js";
+import { LIVENESS_USER_AGENT, livenessBudget, logLiveness, runLivenessCheck, type LivenessSummary } from "../accuracy/liveness.js";
 import { createAuditNet } from "../accuracy/verify.js";
 import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
 import type { SourceAdapter } from "../sources/types.js";
-import { pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary } from "./pipeline.js";
+import { pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
 
 export interface Scheduler {
   stop(): void;
@@ -41,11 +42,18 @@ export type AuditRunner = (db: Db, now: Date) => Promise<AuditSummary>;
 
 const liveAudit: AuditRunner = (db, now) => runAccuracyAudit(db, createAuditNet(), { now });
 
+/** Runs one liveness check within `budget` requests; swapped for a fake in tests. */
+export type LivenessRunner = (db: Db, now: Date, budget: number) => Promise<LivenessSummary>;
+
+const liveLiveness: LivenessRunner = (db, now, budget) =>
+  runLivenessCheck(db, createAuditNet({ userAgent: LIVENESS_USER_AGENT }), { now, budget });
+
 /**
  * In-process scheduler: every tick, runs the sources whose minimum interval
  * has elapsed, then the accuracy audit when the last one is older than
- * `accuracyAuditDays`. Cycles never overlap — a tick that fires while one is
- * running is skipped.
+ * `accuracyAuditDays`, then a liveness check of job-board roles within
+ * `livenessRequestsPerHour`. Cycles never overlap — a tick that fires while
+ * one is running is skipped.
  */
 export function startScheduler(
   db: Db,
@@ -57,14 +65,19 @@ export function startScheduler(
     pruneAfterDays,
     accuracyAuditDays = 0,
     runAudit = liveAudit,
+    livenessRequestsPerHour = 0,
+    runLiveness = liveLiveness,
   }: {
     tickMinutes: number;
-    staleAfterDays: number;
+    staleAfterDays: number | StaleWindows;
     ingestIntervalHours: number;
     pruneAfterDays: number;
     /** Days between accuracy audits; 0 disables them. */
     accuracyAuditDays?: number;
     runAudit?: AuditRunner;
+    /** Liveness-check requests per hour; 0 disables it. */
+    livenessRequestsPerHour?: number;
+    runLiveness?: LivenessRunner;
   },
 ): Scheduler {
   let running: Promise<void> | null = null;
@@ -91,6 +104,13 @@ export function startScheduler(
         if (accuracyAuditDays > 0 && isAuditDue(db, now, accuracyAuditDays)) logAudit(await runAudit(db, now));
       })
       .catch((err: unknown) => console.error("[accuracy] audit failed:", err))
+      // Every tick, spending what the hourly budget has accrued since the last check.
+      .then(async () => {
+        const now = new Date();
+        const budget = livenessBudget(db, now, livenessRequestsPerHour);
+        if (budget > 0) logLiveness(await runLiveness(db, now, budget), budget);
+      })
+      .catch((err: unknown) => console.error("[liveness] check failed:", err))
       .finally(() => {
         running = null;
       });

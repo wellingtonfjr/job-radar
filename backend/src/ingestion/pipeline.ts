@@ -1,3 +1,4 @@
+import { CLOSED_VERDICTS_TO_CLOSE } from "../accuracy/verify.js";
 import type { Db } from "../db/index.js";
 import type { NormalizedJob } from "../domain/job.js";
 import { companyKey, isOpening, normalizeJob } from "../normalize/index.js";
@@ -20,7 +21,8 @@ export interface IngestionOptions {
   /** Global minimum minutes between runs of any source (e.g. 12h). */
   minIntervalMinutes?: number;
   now?: () => Date;
-  staleAfterDays: number;
+  /** Days without being seen before a role from a partially read feed is retired. */
+  staleAfterDays: number | StaleWindows;
 }
 
 const SOURCE_RANK = { ats: 0, aggregator: 1 } as const;
@@ -29,7 +31,9 @@ const DROP_GUARD_RATIO = 0.5;
 const MIN_FEED_FOR_DROP_GUARD = 10;
 
 // `first_seen_at` is only written on INSERT; re-seeing a job refreshes
-// everything else, bumps `last_seen_at` and re-opens it if it was closed.
+// everything else, bumps `last_seen_at` and re-opens it if it was closed,
+// unless the liveness check closed it: a job board can keep listing a role
+// whose ATS posting is gone.
 const UPSERT_SQL = `
   INSERT INTO jobs (
     id, source, feed, external_id, title, company, company_key, company_logo, url, locations,
@@ -70,7 +74,7 @@ const UPSERT_SQL = `
     fingerprint = excluded.fingerprint,
     source_rank = excluded.source_rank,
     last_seen_at = excluded.last_seen_at,
-    closed_at = NULL
+    closed_at = CASE WHEN jobs.closed_streak >= ${CLOSED_VERDICTS_TO_CLOSE} THEN jobs.closed_at ELSE NULL END
 `;
 
 function toRow(job: NormalizedJob, sourceRank: number, seenAt: string): Record<string, unknown> {
@@ -202,27 +206,59 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
 }
 
 /**
- * Retires jobs we can no longer vouch for: past their source-given expiry,
- * or (for feeds that are only partially read) not seen for `staleAfterDays`.
- * Résumé pools stored before they were filtered out are retired too (they
- * may sit in a partially-read feed where absence never closes them).
+ * How long a role from a partially read feed stays open without being seen
+ * again: `bySource[source]` days, else `defaultDays`.
  */
-export function retireStaleJobs(db: Db, now: Date, staleAfterDays: number): number {
+export interface StaleWindows {
+  defaultDays: number;
+  bySource?: Readonly<Record<string, number>>;
+}
+
+/**
+ * Job boards get `jobBoardDays`: most of their roles can't be checked against
+ * the employer, so absence from the feed is the only signal. Every other
+ * source gets `defaultDays`.
+ */
+export function staleWindowsFor(sources: readonly SourceAdapter[], defaultDays: number, jobBoardDays: number): StaleWindows {
+  return { defaultDays, bySource: Object.fromEntries(sources.filter((s) => s.kind === "aggregator").map((s) => [s.id, jobBoardDays])) };
+}
+
+/**
+ * Retires jobs we can no longer vouch for: past their source-given expiry,
+ * or (for feeds that are only partially read) not seen for their source's
+ * stale window. Roles the liveness check verifies keep at least the default
+ * window, since it closes them as soon as their ATS posting goes. Résumé
+ * pools stored before they were filtered out are retired too (they may sit
+ * in a partially-read feed where absence never closes them).
+ */
+export function retireStaleJobs(db: Db, now: Date, stale: number | StaleWindows): number {
+  const { defaultDays, bySource = {} } = typeof stale === "number" ? { defaultDays: stale } : stale;
   const nowIso = now.toISOString();
-  const staleBefore = new Date(now.getTime() - staleAfterDays * 86_400_000).toISOString();
-  const expired = db
-    .prepare(
-      `UPDATE jobs SET closed_at = @now
-       WHERE closed_at IS NULL AND ((expires_at IS NOT NULL AND expires_at < @now) OR last_seen_at < @staleBefore)`,
-    )
-    .run({ now: nowIso, staleBefore }).changes;
+  const before = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString();
+
+  let retired = db
+    .prepare("UPDATE jobs SET closed_at = ? WHERE closed_at IS NULL AND expires_at IS NOT NULL AND expires_at < ?")
+    .run(nowIso, nowIso).changes;
+  const staleInSource = db.prepare(
+    `UPDATE jobs SET closed_at = @now
+     WHERE closed_at IS NULL AND source = @source AND last_seen_at < @staleBefore
+       AND (last_verified_at IS NULL OR last_seen_at < @verifiedStaleBefore)`,
+  );
+  for (const [source, days] of Object.entries(bySource)) {
+    retired += staleInSource.run({ now: nowIso, source, staleBefore: before(days), verifiedStaleBefore: before(Math.max(days, defaultDays)) }).changes;
+  }
+  const others = Object.keys(bySource);
+  const notOthers = others.length > 0 ? `AND source NOT IN (${others.map(() => "?").join(", ")})` : "";
+  retired += db
+    .prepare(`UPDATE jobs SET closed_at = ? WHERE closed_at IS NULL AND last_seen_at < ? ${notOthers}`)
+    .run(nowIso, before(defaultDays), ...others).changes;
 
   const update = db.prepare("UPDATE jobs SET closed_at = ? WHERE id = ?");
   const pools = (db.prepare("SELECT id, title FROM jobs WHERE closed_at IS NULL").all() as { id: string; title: string }[]).filter(
     (j) => !isOpening(j.title),
   );
   db.transaction(() => pools.forEach((j) => update.run(nowIso, j.id)))();
-  return expired + pools.length;
+  return retired + pools.length;
 }
 
 /**

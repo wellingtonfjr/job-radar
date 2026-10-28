@@ -120,6 +120,16 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       PRIMARY KEY (run_id, source)
     );
   `),
+
+  // Liveness checks of job-board roles against the employer's ATS (see accuracy/liveness.ts).
+  (db) => db.exec(`
+    -- Last time the role was checked against its ATS posting (any verdict).
+    ALTER TABLE jobs ADD COLUMN last_verified_at TEXT;
+    -- Consecutive "closed" verdicts; reset by an "open" one.
+    ALTER TABLE jobs ADD COLUMN closed_streak INTEGER NOT NULL DEFAULT 0;
+    -- Apply links that match a row ingested from an ATS are looked up by URL.
+    CREATE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
+  `),
 ];
 
 export function migrate(db: Database.Database): void {
