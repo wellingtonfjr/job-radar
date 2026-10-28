@@ -1,0 +1,121 @@
+# Accuracy check: once a week, make sure what we show as open really is open.
+#
+# The backend audits itself weekly (backend/src/accuracy/): per source, it
+# re-checks a random sample of open roles and of roles closed in the last 7
+# days against the employer's own ATS, and publishes the latest result at
+# /api/accuracy. This workflow reads that and fails when a target is missed:
+#
+#   - open precision >= 97% for ATS sources (Greenhouse, Lever, Ashby…)
+#   - open precision >= 90% for job boards (Remotive, Himalayas…)
+#   - false closures <= 2%, pooled across all sources
+#
+# Small samples are noisy (one miss out of 10 is already 10%), so a source is
+# only judged once it has MIN_VERIFIED verified open roles, and false closures
+# once MIN_CLOSED_VERIFIED recent closures were verified across all sources.
+# Before the first audit there is nothing to judge, and the run passes.
+#
+# How the alert reaches us: when a scheduled run fails, GitHub e-mails the
+# person who last edited this file (the cron schedule). No secrets needed.
+#
+# To test by hand: Actions > Accuracy > Run workflow, and set a target of 1
+# (100%) to watch it fail on any miss.
+
+name: Accuracy
+
+on:
+  schedule:
+    # Wednesdays at 06:41 UTC; off the hour, when GitHub's scheduler is busiest.
+    - cron: "41 6 * * 3"
+  workflow_dispatch:
+    inputs:
+      ats_precision:
+        description: "Minimum open precision for ATS sources (0-1)"
+        required: false
+        default: "0.97"
+      aggregator_precision:
+        description: "Minimum open precision for job boards (0-1)"
+        required: false
+        default: "0.90"
+      max_false_closures:
+        description: "Maximum false-closure rate across all sources (0-1)"
+        required: false
+        default: "0.02"
+
+# The automatic GitHub token isn't used; keep it read-only.
+permissions:
+  contents: read
+
+jobs:
+  accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the latest accuracy audit against the targets
+        env:
+          ACCURACY_URL: https://radar-de-vagas.fly.dev/api/accuracy
+          # A scheduled run has no inputs, so fall back to the defaults.
+          ATS_PRECISION: ${{ inputs.ats_precision || '0.97' }}
+          AGGREGATOR_PRECISION: ${{ inputs.aggregator_precision || '0.90' }}
+          MAX_FALSE_CLOSURES: ${{ inputs.max_false_closures || '0.02' }}
+          MIN_VERIFIED: "20"
+          MIN_CLOSED_VERIFIED: "50"
+        run: |
+          set -euo pipefail
+
+          # --retry also retries connection errors and 5xx answers, so a
+          # machine that is waking up or restarting doesn't raise an alert.
+          if ! report=$(curl --fail --silent --show-error --max-time 30 \
+                             --retry 5 --retry-delay 10 --retry-all-errors \
+                             "$ACCURACY_URL"); then
+            echo "::error::Could not fetch $ACCURACY_URL"
+            exit 1
+          fi
+
+          if ! jq -e 'has("run")' <<<"$report" >/dev/null 2>&1; then
+            echo "::error::$ACCURACY_URL did not return an accuracy report"
+            exit 1
+          fi
+
+          if jq -e '.run == null' <<<"$report" >/dev/null; then
+            echo "::notice::No accuracy audit has run yet; nothing to judge."
+            exit 0
+          fi
+
+          finished=$(jq -r '.run.finishedAt' <<<"$report")
+          echo "Latest audit finished at $finished"
+          echo
+          # One line per source, for the log.
+          jq -r '.sources[] |
+            def pct: if . == null then "-" else (. * 1000 | round / 10 | tostring) + "%" end;
+            "\(.source) (\(.kind)): precision \(.open.precision | pct) of \(.open.verified) verified" +
+            " · false closures \(.closed.falseClosureRate | pct) of \(.closed.verified)" +
+            " · coverage \(.coverage | pct)" +
+            " · latency p50 \(.latency.p50Hours // "-")h p90 \(.latency.p90Hours // "-")h"' <<<"$report"
+          echo
+
+          failures=$(jq -r \
+            --argjson ats "$ATS_PRECISION" \
+            --argjson agg "$AGGREGATOR_PRECISION" \
+            --argjson maxFalse "$MAX_FALSE_CLOSURES" \
+            --argjson minVerified "$MIN_VERIFIED" \
+            --argjson minClosed "$MIN_CLOSED_VERIFIED" '
+            def pct: . * 1000 | round / 10 | tostring + "%";
+            ( .sources[]
+              | select(.open.verified >= $minVerified)
+              | (if .kind == "ats" then $ats else $agg end) as $target
+              | select(.open.precision < $target)
+              | "\(.source): open precision \(.open.precision | pct) is below \($target | pct) (\(.open.closed) of \(.open.verified) verified open roles are closed upstream)"
+            ),
+            ( ( [.sources[].closed.open] | add // 0 ) as $stillOpen
+              | ( [.sources[].closed.verified] | add // 0 ) as $verified
+              | select($verified >= $minClosed and $stillOpen / $verified > $maxFalse)
+              | "false closures \($stillOpen / $verified | pct) exceed \($maxFalse | pct) (\($stillOpen) of \($verified) verified recent closures are still open upstream)"
+            )
+          ' <<<"$report")
+
+          if [ -n "$failures" ]; then
+            while IFS= read -r line; do echo "::error::$line"; done <<<"$failures"
+            exit 1
+          fi
+
+          echo "OK: every source with enough verified roles meets its targets."

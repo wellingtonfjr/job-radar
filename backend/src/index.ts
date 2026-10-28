@@ -31,6 +31,7 @@ const scheduler =
         staleAfterDays: config.staleAfterDays,
         ingestIntervalHours: config.ingestIntervalHours,
         pruneAfterDays: config.pruneAfterDays,
+        accuracyAuditDays: config.accuracyAuditDays,
       })
     : null;
 if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");

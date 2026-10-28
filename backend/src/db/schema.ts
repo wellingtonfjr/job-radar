@@ -85,6 +85,41 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       checked_at TEXT NOT NULL
     );
   `),
+
+  // Weekly accuracy audits: sampled roles re-checked against the ATS (see accuracy/).
+  (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS accuracy_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      status TEXT NOT NULL DEFAULT 'running',
+      error TEXT
+    );
+
+    -- One row per source per run.
+    CREATE TABLE IF NOT EXISTS accuracy_results (
+      run_id INTEGER NOT NULL REFERENCES accuracy_runs(id) ON DELETE CASCADE,
+      source TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      -- Roles we show as open, re-checked upstream.
+      open_sampled INTEGER NOT NULL,
+      open_open INTEGER NOT NULL,
+      open_closed INTEGER NOT NULL,
+      open_unknown INTEGER NOT NULL,
+      -- Roles we closed in the last 7 days, re-checked upstream.
+      closed_sampled INTEGER NOT NULL,
+      closed_open INTEGER NOT NULL,
+      closed_closed INTEGER NOT NULL,
+      closed_unknown INTEGER NOT NULL,
+      -- closed_at - last_seen_at, in hours, over every closure in the last 7 days.
+      latency_count INTEGER NOT NULL,
+      latency_p50_hours REAL,
+      latency_p90_hours REAL,
+      -- Job ids where we and the upstream disagree, for follow-up.
+      mismatches TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY (run_id, source)
+    );
+  `),
 ];
 
 export function migrate(db: Database.Database): void {

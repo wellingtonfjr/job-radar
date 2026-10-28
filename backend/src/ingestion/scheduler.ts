@@ -1,3 +1,5 @@
+import { isAuditDue, logAudit, runAccuracyAudit, type AuditSummary } from "../accuracy/audit.js";
+import { createAuditNet } from "../accuracy/verify.js";
 import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
@@ -34,10 +36,16 @@ function logSummaries(summaries: SourceRunSummary[]): void {
   }
 }
 
+/** Runs one accuracy audit; swapped for a fake in tests. */
+export type AuditRunner = (db: Db, now: Date) => Promise<AuditSummary>;
+
+const liveAudit: AuditRunner = (db, now) => runAccuracyAudit(db, createAuditNet(), { now });
+
 /**
  * In-process scheduler: every tick, runs the sources whose minimum interval
- * has elapsed. Cycles never overlap — a tick that fires while one is running
- * is skipped.
+ * has elapsed, then the accuracy audit when the last one is older than
+ * `accuracyAuditDays`. Cycles never overlap — a tick that fires while one is
+ * running is skipped.
  */
 export function startScheduler(
   db: Db,
@@ -47,7 +55,17 @@ export function startScheduler(
     staleAfterDays,
     ingestIntervalHours,
     pruneAfterDays,
-  }: { tickMinutes: number; staleAfterDays: number; ingestIntervalHours: number; pruneAfterDays: number },
+    accuracyAuditDays = 0,
+    runAudit = liveAudit,
+  }: {
+    tickMinutes: number;
+    staleAfterDays: number;
+    ingestIntervalHours: number;
+    pruneAfterDays: number;
+    /** Days between accuracy audits; 0 disables them. */
+    accuracyAuditDays?: number;
+    runAudit?: AuditRunner;
+  },
 ): Scheduler {
   let running: Promise<void> | null = null;
 
@@ -66,6 +84,13 @@ export function startScheduler(
         summaries.some((s) => s.status !== "skipped") ? resolveApplyLinks(db, liveNet, { now: new Date() }).then(logResolve) : undefined,
       )
       .catch((err: unknown) => console.error("[ingest] cycle failed:", err))
+      // Weekly, after ingestion so the two never compete. Due-ness is read
+      // from the database, so restarts and deploys don't trigger extra runs.
+      .then(async () => {
+        const now = new Date();
+        if (accuracyAuditDays > 0 && isAuditDue(db, now, accuracyAuditDays)) logAudit(await runAudit(db, now));
+      })
+      .catch((err: unknown) => console.error("[accuracy] audit failed:", err))
       .finally(() => {
         running = null;
       });
