@@ -110,7 +110,11 @@ export const ptBR: Messages = {
     removed: (when: string) => `Removida pela fonte ${when}. Provavelmente já foi preenchida.`,
     applyEmployer: 'Candidatar-se no site da empresa',
     applyOn: (source: string) => `Candidatar-se via ${source}`,
-    verifiedOpen: (when: string) => `Aberta, verificada ${when}`,
+    checked: (when: string) => `Verificada ${when}`,
+    reportClosed: 'Vaga encerrada?',
+    reportClosedHint: 'Avise se esta vaga não está mais aberta. Vamos conferir com a empresa.',
+    reportThanks: 'Obrigado, estamos verificando esta vaga',
+    reportFailed: 'Não foi possível enviar. Tente de novo mais tarde.',
     goesTo: 'Leva para {host}, encontrada {method}.',
     listedOn: 'Anunciada em {source}.',
     boardOnly: (source: string) =>
@@ -159,6 +163,7 @@ export const ptBR: Messages = {
     lastScan: 'Última varredura',
     kind: { ats: 'ATS da empresa', aggregator: 'Site de vagas' },
     never: 'nunca',
+    precision: (percent: string) => `${percent} das vagas da amostra confirmadas abertas na última semana`,
   },
   errors: {
     unreachable: 'Não foi possível acessar a API do job-radar. O backend está rodando (npm run dev em backend/)?',

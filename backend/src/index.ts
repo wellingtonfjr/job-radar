@@ -1,5 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { LIVENESS_USER_AGENT } from "./accuracy/liveness.js";
+import { createAuditNet } from "./accuracy/verify.js";
+import { createReportQueue } from "./api/reports.js";
 import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { openDb } from "./db/index.js";
@@ -13,7 +16,13 @@ const app = createApp(db, {
   staticDir: config.frontendDist,
   rateLimitPerMinute: config.rateLimitPerMinute,
   siteUrl: config.siteUrl,
+  reportQueue: createReportQueue(db, createAuditNet({ userAgent: LIVENESS_USER_AGENT })),
+  reportIpSalt: config.reportIpSalt,
+  reportsPerHour: config.reportsPerHour,
 });
+if (!config.reportIpSalt && process.env.NODE_ENV === "production") {
+  console.warn("[reports] REPORT_IP_SALT is not set; reporters' IP hashes use the public dev salt.");
+}
 const servesFrontend = fs.existsSync(path.join(config.frontendDist, "index.html"));
 
 const server = app.listen(config.port, () => {

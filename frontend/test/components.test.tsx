@@ -1,10 +1,11 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ActiveFilters } from '../src/components/ActiveFilters';
 import { FilterPanel } from '../src/components/FilterPanel';
 import { JobDetailView } from '../src/components/JobDetailView';
 import { JobRow } from '../src/components/JobRow';
+import { SourcesFooter } from '../src/components/SourcesFooter';
 import { EMPTY_FILTERS } from '../src/lib/filters';
 import { makeDetail, makeJob, stats } from './fixtures';
 
@@ -141,5 +142,67 @@ describe('apply links', () => {
     render(<FilterPanel filters={EMPTY_FILTERS} stats={stats} onChange={onChange} />);
     await userEvent.click(screen.getByRole('checkbox', { name: /Employer's own posting only/ }));
     expect(onChange).toHaveBeenCalledWith({ ...EMPTY_FILTERS, direct: true });
+  });
+});
+
+describe('freshness and "Role closed?"', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+  it('says when the role was last checked', () => {
+    render(<JobDetailView job={makeDetail({ lastSeenAt: hoursAgo(30), lastVerifiedAt: hoursAgo(3), checkedAt: hoursAgo(3) })} stats={stats} variant="page" />);
+    expect(screen.getByText('Checked 3 hours ago')).toBeInTheDocument();
+  });
+
+  it('sends a report and thanks the visitor', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ status: 'checking' }), { status: 202, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetch);
+    render(<JobDetailView job={makeDetail()} stats={stats} variant="pane" />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Role closed?' }));
+    expect(await screen.findByRole('status')).toHaveTextContent("Thanks, we're checking this role");
+    expect(screen.queryByRole('button', { name: 'Role closed?' })).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledOnce();
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('/api/jobs/greenhouse%3A1/report');
+    expect(init.method).toBe('POST');
+    expect(new Headers(init.headers).get('content-type')).toBe('application/json');
+  });
+
+  it('explains a rate limit, and lets the visitor retry after other failures', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ error: 'Too many reports, please try again later.' }), { status: 429 })),
+    );
+    const { unmount } = render(<JobDetailView job={makeDetail()} stats={stats} variant="page" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Role closed?' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too many requests, please slow down.');
+    unmount();
+
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('oops', { status: 500 })));
+    render(<JobDetailView job={makeDetail()} stats={stats} variant="page" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Role closed?' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't send that. Please try again later.");
+    expect(screen.getByRole('button', { name: 'Role closed?' })).toBeEnabled();
+  });
+
+  it('has no report button on a closed role', () => {
+    render(<JobDetailView job={makeDetail({ closedAt: hoursAgo(2) })} stats={stats} variant="page" />);
+    expect(screen.queryByRole('button', { name: 'Role closed?' })).not.toBeInTheDocument();
+  });
+});
+
+describe('SourcesFooter', () => {
+  it('shows the audit precision when there is one', () => {
+    render(<SourcesFooter sources={[]} openPrecision={0.968} />);
+    expect(screen.getByText('97% of sampled roles verified open last week')).toBeInTheDocument();
+  });
+
+  it('hides it without enough verified samples', () => {
+    render(<SourcesFooter sources={[]} openPrecision={null} />);
+    expect(screen.queryByText(/sampled roles/)).not.toBeInTheDocument();
   });
 });

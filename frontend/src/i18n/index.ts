@@ -15,6 +15,7 @@ const MESSAGES: Record<Locale, Messages> = { en, 'pt-BR': ptBR };
 function formatters(locale: Locale, t: Messages) {
   return {
     count: (value: number) => formatCount(value, locale),
+    percent: (ratio: number) => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }).format(ratio),
     relative: (iso: string) => formatRelative(iso, locale),
     date: (iso: string | null) => formatDate(iso, locale),
     salary: (salary: Salary | null) => formatSalary(salary, locale, t.periodSuffix),

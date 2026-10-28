@@ -4,6 +4,7 @@ import { SOURCES } from "../sources/index.js";
 import type { SourceAdapter } from "../sources/types.js";
 import { countVerdicts, hoursBetween, percentile, type VerdictCounts } from "./metrics.js";
 import { createRefLookup, type RefRow } from "./refs.js";
+import { countReportsBySource } from "./reports.js";
 import { createVerifier, type AuditNet, type PostingRef, type Verdict } from "./verify.js";
 
 /**
@@ -47,6 +48,8 @@ export interface SourceAudit {
   closed: VerdictCounts;
   latency: { count: number; p50Hours: number | null; p90Hours: number | null };
   mismatches: { shownOpenButClosed: string[]; closedButStillOpen: string[] };
+  /** "Role closed?" reports on the source's roles in the last CLOSED_WINDOW_DAYS. */
+  reports: number;
 }
 
 export interface AuditSummary {
@@ -101,6 +104,7 @@ export async function runAccuracyAudit(db: Db, net: AuditNet, options: AuditOpti
       verdicts.set(id, await verify(ref).catch((): Verdict => "unknown"));
     });
     const verdictOf = (d: { row: JobRow }): Verdict => verdicts.get(d.row.id) ?? "unknown";
+    const reports = countReportsBySource(db, windowStart);
 
     const results = plans.map(({ source, open, closed }): SourceAudit => {
       const hours = (closures.all(source.id, windowStart) as { last_seen_at: string; closed_at: string }[]).map((r) =>
@@ -116,6 +120,7 @@ export async function runAccuracyAudit(db: Db, net: AuditNet, options: AuditOpti
           shownOpenButClosed: open.filter((d) => verdictOf(d) === "closed").slice(0, MAX_MISMATCHES).map((d) => d.row.id),
           closedButStillOpen: closed.filter((d) => verdictOf(d) === "open").slice(0, MAX_MISMATCHES).map((d) => d.row.id),
         },
+        reports: reports.get(source.id) ?? 0,
       };
     });
 
@@ -123,15 +128,15 @@ export async function runAccuracyAudit(db: Db, net: AuditNet, options: AuditOpti
       `INSERT INTO accuracy_results (
          run_id, source, kind, open_sampled, open_open, open_closed, open_unknown,
          closed_sampled, closed_open, closed_closed, closed_unknown,
-         latency_count, latency_p50_hours, latency_p90_hours, mismatches
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         latency_count, latency_p50_hours, latency_p90_hours, mismatches, reports
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     db.transaction(() => {
       for (const r of results) {
         insert.run(
           runId, r.source, r.kind, r.open.sampled, r.open.open, r.open.closed, r.open.unknown,
           r.closed.sampled, r.closed.open, r.closed.closed, r.closed.unknown,
-          r.latency.count, r.latency.p50Hours, r.latency.p90Hours, JSON.stringify(r.mismatches),
+          r.latency.count, r.latency.p50Hours, r.latency.p90Hours, JSON.stringify(r.mismatches), r.reports,
         );
       }
       db.prepare("UPDATE accuracy_runs SET status = 'ok', finished_at = ? WHERE id = ?").run(new Date().toISOString(), runId);
@@ -151,11 +156,12 @@ export function isAuditDue(db: Db, now: Date, intervalDays: number): boolean {
 
 export function logAudit(summary: AuditSummary): void {
   for (const s of summary.sources) {
-    if (s.open.sampled + s.closed.sampled === 0) continue;
+    if (s.open.sampled + s.closed.sampled + s.reports === 0) continue;
     console.log(
       `[accuracy] ${s.source}: open ${s.open.open}✓ ${s.open.closed}✗ ${s.open.unknown}? · ` +
         `recently closed ${s.closed.closed}✓ ${s.closed.open}✗ ${s.closed.unknown}? · ` +
-        `latency p50=${s.latency.p50Hours?.toFixed(1) ?? "-"}h p90=${s.latency.p90Hours?.toFixed(1) ?? "-"}h (n=${s.latency.count})`,
+        `latency p50=${s.latency.p50Hours?.toFixed(1) ?? "-"}h p90=${s.latency.p90Hours?.toFixed(1) ?? "-"}h (n=${s.latency.count}) · ` +
+        `reports ${s.reports}`,
     );
   }
 }

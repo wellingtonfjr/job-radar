@@ -151,7 +151,7 @@ backend/   Node 26 · TypeScript · Express · SQLite (better-sqlite3)
   src/normalize/   category, seniority, employment type, salary, location, skills, dedup keys
   src/ingestion/   pipeline (upsert/close/retire/dedup/tiers), scheduler, CLI
   src/accuracy/    weekly audit and hourly liveness checks against the employers' ATS
-  src/api/         GET /api/jobs, /api/jobs/:id, /api/stats, /api/accuracy
+  src/api/         GET /api/jobs, /api/jobs/:id, /api/stats, /api/accuracy; POST /api/jobs/:id/report
 frontend/  React 19 · TypeScript · Vite (no router/UI libraries)
 ```
 
@@ -171,7 +171,10 @@ The API checks for due sources on startup and every `SCHEDULER_TICK_MINUTES`
 passed since its last run, so restarts don't cause extra fetching. Other settings:
 `PORT`, `DB_PATH`, `STALE_AFTER_DAYS`, `JOB_BOARD_STALE_AFTER_DAYS`,
 `LIVENESS_REQUESTS_PER_HOUR`, `SCHEDULER=off`, `RATE_LIMIT_PER_MINUTE`
-(default 180 API requests per visitor per minute), `FRONTEND_DIST` (built
+(default 180 API requests per visitor per minute), `REPORTS_PER_HOUR` (default
+10 "Role closed?" reports per visitor per hour), `REPORT_IP_SALT` (secret salt
+for the hashed reporter IPs; set it in production, a public dev salt is used
+otherwise), `FRONTEND_DIST` (built
 frontend the API serves; default `../frontend/dist`) and `CORS_ORIGIN` (unset
 by default: the UI is same-origin, so no other site may read the API) and
 `SITE_URL` (public base URL used in `/sitemap.xml`, `/robots.txt` and role link
@@ -217,7 +220,9 @@ when known, otherwise `url`) and `applyDirect`.
 `GET /api/stats` returns totals, facet counts, the countries present, and each
 source's last run.
 `GET /api/accuracy` returns the latest accuracy audit per source (see below);
-`run` is `null` before the first one.
+`run` is `null` before the first one. Every role carries `checkedAt`, when it
+was last confirmed listed (its latest liveness check or feed sighting).
+`POST /api/jobs/:id/report` (JSON) is the "Role closed?" button (see below).
 
 ## Checks
 
@@ -294,6 +299,23 @@ after this many days without being seen in their feed.
 
 Job-board roles the liveness check has verified keep the 30-day window, since
 it closes them as soon as their ATS posting goes.
+
+### "Role closed?" reports
+
+The role page and preview have a **Role closed?** button. A report never closes
+a role: it queues an immediate liveness check of that role (any source, same
+two-strikes rule, at most one check per role per hour). An "open" answer
+dismisses the role's reports; otherwise they are kept, and a role with reports
+from **3 distinct visitors within 7 days** leaves the default listing pending
+review (it stays open, on its own page and under its source filter) until the
+reports age out or a check finds it open. Reports are rate-limited per visitor
+(`REPORTS_PER_HOUR`), counted once per visitor and role per week, and stored
+with an HMAC of the visitor's IP (its /56 for IPv6; `REPORT_IP_SALT`), never
+the IP. Only JSON posts from our own pages are accepted, so other sites can't
+make their visitors report. The audit counts reports per source.
+
+The footer quotes the latest audit's open precision across sources once that
+audit verified at least 30 open roles and is under 14 days old.
 
 ## Known limitations
 

@@ -984,6 +984,31 @@ input {
   font-size: 0.8125rem;
   color: var(--muted);
 }
+.report-closed {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.report-closed .link-button {
+  font-weight: 500;
+  color: var(--muted);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.report-closed .link-button:hover,
+.report-closed .link-button:focus-visible {
+  color: var(--accent);
+}
+.report-closed .link-button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+.report-closed--sent {
+  color: var(--ink-2);
+}
+.report-closed__error {
+  color: var(--danger);
+}
 .facts {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -1156,6 +1181,11 @@ input {
 .footer__about {
   font-size: 0.875rem;
   color: var(--muted);
+}
+.footer__trust {
+  margin: 8px 0 0;
+  color: var(--ink-2);
+  font-weight: 600;
 }
 .footer__brand {
   margin: 0 0 6px;

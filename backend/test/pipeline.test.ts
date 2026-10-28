@@ -309,7 +309,7 @@ describe("pruneOldRows", () => {
 
   it("does nothing when disabled with 0", async () => {
     await seed();
-    expect(pruneOldRows(db, daysLater(400), 0)).toEqual({ jobs: 0, sourceRuns: 0 });
+    expect(pruneOldRows(db, daysLater(400), 0)).toEqual({ jobs: 0, sourceRuns: 0, reports: 0 });
     expect(allIds()).toEqual(["ats:old", "ats:open", "ats:recent"]);
     expect(db.prepare("SELECT COUNT(*) AS n FROM source_runs").get()).toEqual({ n: 3 });
   });

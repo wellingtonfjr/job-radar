@@ -1,4 +1,4 @@
-import type { Job, JobDetail, Stats } from '../src/api/types';
+import type { Accuracy, Job, JobDetail, Stats } from '../src/api/types';
 
 export function makeJob(overrides: Partial<Job> = {}): Job {
   return {
@@ -27,12 +27,21 @@ export function makeJob(overrides: Partial<Job> = {}): Job {
     expiresAt: null,
     firstSeenAt: '2026-10-01T00:00:00Z',
     lastSeenAt: '2026-10-15T00:00:00Z',
+    lastVerifiedAt: null,
+    checkedAt: '2026-10-15T00:00:00Z',
     ...overrides,
   };
 }
 
 export function makeDetail(overrides: Partial<JobDetail> = {}): JobDetail {
   return { ...makeJob(), description: 'About us\n\nWe build things.', closedAt: null, applyMethod: 'source', alsoOn: [], ...overrides };
+}
+
+export function makeAccuracy(openPrecision: number | null): Accuracy {
+  return {
+    run: { id: 1, startedAt: '2026-10-14T00:00:00Z', finishedAt: '2026-10-14T00:10:00Z' },
+    summary: { verified: openPrecision === null ? 4 : 120, openPrecision },
+  };
 }
 
 export const stats: Stats = {

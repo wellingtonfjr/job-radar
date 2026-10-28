@@ -7,7 +7,7 @@ import { JobRow } from '../src/components/JobRow';
 import { detectLocale, setLocale, type Messages } from '../src/i18n';
 import { en } from '../src/i18n/en';
 import { ptBR } from '../src/i18n/pt-BR';
-import { makeDetail, makeJob, stats } from './fixtures';
+import { makeAccuracy, makeDetail, makeJob, stats } from './fixtures';
 
 /** Every key path with the kind of value at it ("app.skipLink:string"). */
 function shape(value: unknown, path = ''): string[] {
@@ -67,7 +67,9 @@ function stubApi(total: number) {
       const url = String(input);
       const body = url.startsWith('/api/stats')
         ? stats
-        : { jobs: [makeJob()], total, newLast7Days: 8_629, page: 1, pageSize: 20, hasMore: true };
+        : url.startsWith('/api/accuracy')
+          ? makeAccuracy(0.973)
+          : { jobs: [makeJob()], total, newLast7Days: 8_629, page: 1, pageSize: 20, hasMore: true };
       return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }),
   );
@@ -103,18 +105,21 @@ describe('Portuguese UI', () => {
 
     expect(document.documentElement.lang).toBe('pt-BR');
     expect(document.title).toBe('job-radar · Vagas abertas, verificadas todo dia');
+    expect(await screen.findByText('97% das vagas da amostra confirmadas abertas na última semana')).toBeInTheDocument();
   });
 
   it('switches language from the top bar and remembers the choice', async () => {
     stubApi(20_980);
     render(<App />);
     expect(await screen.findByText(/matching/)).toHaveTextContent('20,980 matching');
+    expect(await screen.findByText('97% of sampled roles verified open last week')).toBeInTheDocument();
 
     const language = screen.getByRole('group', { name: 'Language' });
     await userEvent.click(within(language).getByRole('button', { name: 'PT' }));
 
     expect(screen.getByRole('heading', { level: 1, name: 'Vagas abertas' })).toBeInTheDocument();
     expect(screen.getByText(/vagas encontradas/)).toHaveTextContent('20.980 vagas encontradas');
+    expect(screen.getByText('97% das vagas da amostra confirmadas abertas na última semana')).toBeInTheDocument();
     expect(within(screen.getByRole('group', { name: 'Idioma' })).getByRole('button', { name: 'PT' })).toHaveAttribute('aria-pressed', 'true');
     expect(document.documentElement.lang).toBe('pt-BR');
     expect(window.localStorage.getItem('job-radar:locale')).toBe('pt-BR');
@@ -153,5 +158,14 @@ describe('Portuguese UI', () => {
     expect(screen.getByText(/^Leva para/)).toHaveTextContent('Leva para jobs.lever.co, encontrada no site de vagas da própria empresa. Anunciada em Remotive.');
     expect(screen.getByRole('button', { name: 'Já me candidatei' })).toBeInTheDocument();
     expect(screen.getByText('Publicada em').nextElementSibling).toHaveTextContent('1 de out. de 2026');
+    expect(screen.getByText(/^Verificada há \d+ dias$/)).toBeInTheDocument();
+  });
+
+  it('reports a closed role in pt-BR', async () => {
+    setLocale('pt-BR');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ status: 'checking' }), { status: 202, headers: { 'Content-Type': 'application/json' } })));
+    render(<JobDetailView job={makeDetail()} stats={stats} variant="page" />);
+    await userEvent.click(screen.getByRole('button', { name: 'Vaga encerrada?' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Obrigado, estamos verificando esta vaga');
   });
 });

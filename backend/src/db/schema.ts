@@ -130,6 +130,31 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
     -- Apply links that match a row ingested from an ATS are looked up by URL.
     CREATE INDEX IF NOT EXISTS idx_jobs_url ON jobs(url);
   `),
+
+  // "Role closed?" reports from visitors (see accuracy/reports.ts).
+  (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS job_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id TEXT NOT NULL,
+      -- HMAC of the visitor's IP (its /56 for IPv6); the IP itself is never stored.
+      ip_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      -- The liveness check the report triggered: open, closed or unknown;
+      -- NULL while none ran. "open" dismisses the report.
+      verdict TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_reports_job ON job_reports(job_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_job_reports_created ON job_reports(created_at);
+
+    -- Reports per source in the audit's week.
+    ALTER TABLE accuracy_results ADD COLUMN reports INTEGER NOT NULL DEFAULT 0;
+
+    -- Small named values, e.g. when the hourly liveness pass last ran.
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `),
 ];
 
 export function migrate(db: Database.Database): void {

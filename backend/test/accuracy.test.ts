@@ -238,7 +238,7 @@ describe("GET /api/accuracy", () => {
   }
 
   it("says no audit has run yet", async () => {
-    expect(await get(openDb(":memory:"))).toEqual({ status: 200, body: { run: null, sources: [] } });
+    expect(await get(openDb(":memory:"))).toEqual({ status: 200, body: { run: null, summary: { verified: 0, openPrecision: null }, sources: [] } });
   });
 
   it("returns the latest successful run", async () => {

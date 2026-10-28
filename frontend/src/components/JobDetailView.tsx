@@ -4,6 +4,7 @@ import { jobPath } from '../lib/router';
 import { CompanyLogo } from './CompanyLogo';
 import { Icon } from './Icon';
 import { Link } from './Link';
+import { ReportClosedButton } from './ReportClosedButton';
 import { RoleMarkButtons } from './RoleMarkButtons';
 
 interface JobDetailViewProps {
@@ -100,8 +101,9 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
         <div className="apply-notes">
           <p className="verified">
             <span className="live__dot" aria-hidden="true" />
-            {t.role.verifiedOpen(fmt.relative(job.lastSeenAt))}
+            {t.role.checked(fmt.relative(job.checkedAt))}
           </p>
+          {!job.closedAt && <ReportClosedButton key={job.id} jobId={job.id} />}
           {job.applyDirect ? (
             <p className="apply-note">
               {rich(t.role.goesTo, {

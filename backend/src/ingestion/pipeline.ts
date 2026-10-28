@@ -1,3 +1,4 @@
+import { HIDDEN_BY_REPORTS, hiddenByReportsParams } from "../accuracy/reports.js";
 import { CLOSED_VERDICTS_TO_CLOSE } from "../accuracy/verify.js";
 import type { Db } from "../db/index.js";
 import type { NormalizedJob } from "../domain/job.js";
@@ -282,12 +283,17 @@ export const EVERGREEN_AFTER_DAYS = 180;
  *   They stay open and still hide their aggregator copies, so the same pool
  *   doesn't resurface through a job board; the `source` filter still shows them.
  *   Aggregators are left alone: their feeds only carry recent postings.
+ * - Roles with enough recent "Role closed?" reports are hidden pending
+ *   review (see accuracy/reports.ts). Like evergreen postings they stay open,
+ *   so they still hide their copies: a report hides the opening, not just
+ *   one source's listing of it.
  */
 export function recomputeCanonical(db: Db, now: Date): void {
   const evergreenBefore = new Date(now.getTime() - EVERGREEN_AFTER_DAYS * 86_400_000).toISOString();
   db.prepare(
     `UPDATE jobs SET canonical = closed_at IS NULL
       AND NOT (source_rank = @atsRank AND COALESCE(posted_at, first_seen_at) < @evergreenBefore)
+      AND NOT ${HIDDEN_BY_REPORTS}
       AND NOT EXISTS (
         SELECT 1 FROM jobs o
         WHERE o.fingerprint = jobs.fingerprint
@@ -295,7 +301,7 @@ export function recomputeCanonical(db: Db, now: Date): void {
           AND o.closed_at IS NULL
           AND (o.source_rank < jobs.source_rank OR (o.source_rank = jobs.source_rank AND o.source < jobs.source))
       )`,
-  ).run({ atsRank: SOURCE_RANK.ats, evergreenBefore });
+  ).run({ atsRank: SOURCE_RANK.ats, evergreenBefore, ...hiddenByReportsParams(now) });
 }
 
 const TIER_THRESHOLDS: [string, number][] = [
@@ -352,6 +358,7 @@ export function recomputeCompanyTiers(db: Db): void {
 export interface PruneSummary {
   jobs: number;
   sourceRuns: number;
+  reports: number;
 }
 
 /**
@@ -363,14 +370,15 @@ export interface PruneSummary {
  * `companies` / `ats_boards` are keyed by company. The only link between rows
  * is the dedup `fingerprint`, so as a safeguard a closed job is kept while an
  * open job shares its fingerprint. Each source's latest finished run is kept
- * too, so /api/stats always has a "last run" to show.
+ * too, so /api/stats always has a "last run" to show. "Role closed?" reports
+ * only count for a week, so old ones go too (with their role, or not).
  *
  * No VACUUM: SQLite reuses the freed pages for new rows, so the file stops
  * growing instead of shrinking, and a VACUUM would rewrite the whole database
  * (needing as much free disk again) while blocking the API.
  */
 export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary {
-  if (afterDays <= 0) return { jobs: 0, sourceRuns: 0 };
+  if (afterDays <= 0) return { jobs: 0, sourceRuns: 0, reports: 0 };
   const before = new Date(now.getTime() - afterDays * 86_400_000).toISOString();
   return db.transaction(() => ({
     jobs: db
@@ -387,6 +395,7 @@ export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary
            AND id NOT IN (SELECT MAX(id) FROM source_runs WHERE finished_at IS NOT NULL GROUP BY source)`,
       )
       .run(before).changes,
+    reports: db.prepare("DELETE FROM job_reports WHERE created_at < ?").run(before).changes,
   }))();
 }
 

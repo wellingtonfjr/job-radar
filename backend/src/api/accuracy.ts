@@ -22,22 +22,42 @@ interface ResultRow {
   latency_count: number;
   latency_p50_hours: number | null;
   latency_p90_hours: number | null;
+  reports: number;
 }
+
+/** Verified open-role samples the public summary needs, across sources. */
+export const MIN_VERIFIED_FOR_SUMMARY = 30;
+/** A run older than this (two missed weekly audits) is too old to quote. */
+export const SUMMARY_MAX_AGE_DAYS = 14;
 
 /**
  * The latest successful accuracy audit, per source (see accuracy/audit.ts).
  * Rates are null when nothing could be verified; `run` is null before the
  * first audit.
+ *
+ * `summary` is the open precision across every source, for the footer's
+ * trust signal: null unless the run verified at least MIN_VERIFIED_FOR_SUMMARY
+ * open roles and finished within SUMMARY_MAX_AGE_DAYS.
  */
-export function getAccuracy(db: Db) {
+export function getAccuracy(db: Db, now: Date = new Date()) {
   const run = db
     .prepare("SELECT id, started_at, finished_at FROM accuracy_runs WHERE status = 'ok' ORDER BY id DESC LIMIT 1")
     .get() as RunRow | undefined;
-  if (!run) return { run: null, sources: [] };
+  if (!run) return { run: null, summary: { verified: 0, openPrecision: null }, sources: [] };
 
   const rows = db.prepare("SELECT * FROM accuracy_results WHERE run_id = ? ORDER BY rowid").all(run.id) as ResultRow[];
+  const total: VerdictCounts = { sampled: 0, open: 0, closed: 0, unknown: 0 };
+  for (const r of rows) {
+    total.sampled += r.open_sampled;
+    total.open += r.open_open;
+    total.closed += r.open_closed;
+    total.unknown += r.open_unknown;
+  }
+  const verified = total.open + total.closed;
+  const recent = Date.parse(run.finished_at) > now.getTime() - SUMMARY_MAX_AGE_DAYS * 86_400_000;
   return {
     run: { id: run.id, startedAt: run.started_at, finishedAt: run.finished_at },
+    summary: { verified, openPrecision: recent && verified >= MIN_VERIFIED_FOR_SUMMARY ? openPrecision(total) : null },
     sources: rows.map((r) => {
       const open: VerdictCounts = { sampled: r.open_sampled, open: r.open_open, closed: r.open_closed, unknown: r.open_unknown };
       const closed: VerdictCounts = { sampled: r.closed_sampled, open: r.closed_open, closed: r.closed_closed, unknown: r.closed_unknown };
@@ -50,6 +70,7 @@ export function getAccuracy(db: Db) {
         closed: { ...closed, verified: closed.open + closed.closed, falseClosureRate: falseClosureRate(closed) },
         latency: { count: r.latency_count, p50Hours: r.latency_p50_hours, p90Hours: r.latency_p90_hours },
         coverage: coverage(open, closed),
+        reports: r.reports,
       };
     }),
   };

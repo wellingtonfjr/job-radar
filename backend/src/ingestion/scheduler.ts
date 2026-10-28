@@ -26,7 +26,7 @@ export function logResolve(summary: ResolveSummary): void {
 
 export function logPrune(summary: PruneSummary, afterDays: number): void {
   if (afterDays <= 0) return;
-  console.log(`[ingest] pruned (older than ${afterDays}d): closed jobs=${summary.jobs} source runs=${summary.sourceRuns}`);
+  console.log(`[ingest] pruned (older than ${afterDays}d): closed jobs=${summary.jobs} source runs=${summary.sourceRuns} reports=${summary.reports}`);
 }
 
 function logSummaries(summaries: SourceRunSummary[]): void {

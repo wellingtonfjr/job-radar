@@ -85,6 +85,7 @@ interface JobRow {
   expires_at: string | null;
   first_seen_at: string;
   last_seen_at: string;
+  last_verified_at: string | null;
   tier: PayTier | null;
   source_rank: number;
   apply_url: string | null;
@@ -131,6 +132,9 @@ function rowToJob(row: JobRow): Job {
     expiresAt: row.expires_at,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
+    lastVerifiedAt: row.last_verified_at,
+    // ISO timestamps in UTC compare as strings.
+    checkedAt: row.last_verified_at && row.last_verified_at > row.last_seen_at ? row.last_verified_at : row.last_seen_at,
   };
 }
 
@@ -151,7 +155,7 @@ const LIST_COLUMNS = `
   j.id, j.source, j.external_id, j.title, j.company, j.company_logo, j.url, j.locations, j.workplace,
   j.allowed_countries, j.category, j.seniority, j.employment_type, j.salary_min, j.salary_max,
   j.salary_currency, j.salary_period, j.salary_min_usd_year, j.skills, j.tags, j.posted_at, j.expires_at,
-  j.first_seen_at, j.last_seen_at, c.tier, j.source_rank, j.apply_url`;
+  j.first_seen_at, j.last_seen_at, j.last_verified_at, c.tier, j.source_rank, j.apply_url`;
 
 /** Builds the WHERE clause shared by the listing and its count. */
 export function buildJobFilter(query: JobsQuery, now: Date): { where: string; params: Record<string, unknown> } {

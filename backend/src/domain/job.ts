@@ -129,6 +129,10 @@ export interface Job extends Omit<NormalizedJob, "feed" | "fingerprint" | "descr
   companyTier: PayTier | null;
   firstSeenAt: string;
   lastSeenAt: string;
+  /** Last check against the employer's ATS (liveness check), if any. */
+  lastVerifiedAt: string | null;
+  /** When we last confirmed the role is listed: the later of lastVerifiedAt and lastSeenAt. */
+  checkedAt: string;
 }
 
 export interface JobDetail extends Job {
