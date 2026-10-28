@@ -4,7 +4,7 @@ import type { JobDetail } from '../api/types';
 
 export type JobLoadState =
   | { status: 'loading' }
-  | { status: 'error'; message: string; notFound: boolean }
+  | { status: 'error'; error: Error; notFound: boolean }
   | { status: 'ready'; job: JobDetail };
 
 /** Loads one job's full detail; `retry` re-runs the request. */
@@ -23,7 +23,7 @@ export function useJob(id: string): { state: JobLoadState; retry: () => void } {
           attempt,
           state: {
             status: 'error',
-            message: err instanceof Error ? err.message : 'Something went wrong.',
+            error: err instanceof Error ? err : new Error(String(err)),
             notFound: err instanceof ApiError && err.status === 404,
           },
         });

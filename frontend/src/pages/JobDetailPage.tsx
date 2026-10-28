@@ -5,6 +5,7 @@ import { JobDetailView } from '../components/JobDetailView';
 import { Link } from '../components/Link';
 import { StatusMessage } from '../components/StatusMessage';
 import { useJob } from '../hooks/useJob';
+import { errorMessage, useI18n } from '../i18n';
 
 interface JobDetailPageProps {
   id: string;
@@ -12,11 +13,12 @@ interface JobDetailPageProps {
 }
 
 export function JobDetailPage({ id, stats }: JobDetailPageProps) {
+  const { t } = useI18n();
   const { state, retry } = useJob(id);
 
   useEffect(() => {
-    if (state.status === 'ready') document.title = `${state.job.title} at ${state.job.company} · job-radar`;
-  }, [state]);
+    if (state.status === 'ready') document.title = t.role.pageTitle(state.job.title, state.job.company);
+  }, [state, t]);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -25,7 +27,7 @@ export function JobDetailPage({ id, stats }: JobDetailPageProps) {
   return (
     <main className="page page--detail" id="main">
       <Link href="/" className="back-link">
-        <Icon name="back" size={16} /> All roles
+        <Icon name="back" size={16} /> {t.app.allRoles}
       </Link>
       {state.status === 'loading' && (
         <div className="job-detail" aria-busy="true">
@@ -35,11 +37,11 @@ export function JobDetailPage({ id, stats }: JobDetailPageProps) {
       )}
       {state.status === 'error' && (
         <StatusMessage
-          title={state.notFound ? 'This role is no longer listed' : "Couldn't load this role"}
+          title={state.notFound ? t.role.notFound : t.role.loadError}
           tone={state.notFound ? 'neutral' : 'error'}
-          action={state.notFound ? undefined : { label: 'Try again', onClick: retry }}
+          action={state.notFound ? undefined : { label: t.app.tryAgain, onClick: retry }}
         >
-          {state.notFound ? <Link href="/">Browse open roles</Link> : state.message}
+          {state.notFound ? <Link href="/">{t.app.browseRoles}</Link> : errorMessage(state.error, t)}
         </StatusMessage>
       )}
       {state.status === 'ready' && <JobDetailView job={state.job} stats={stats} variant="page" />}

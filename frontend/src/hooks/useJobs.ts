@@ -13,7 +13,7 @@ interface JobsState {
   hasMore: boolean;
   status: 'loading' | 'ready' | 'error';
   loadingMore: boolean;
-  error: string | null;
+  error: Error | null;
   // When the latest page arrived; "New" badges compare against this instead of the clock at render time.
   fetchedAt: number;
 }
@@ -26,8 +26,8 @@ function initialState(query: string): JobsState {
   return { query, jobs: [], total: 0, newLast7Days: 0, page: 0, hasMore: false, status: 'loading', loadingMore: false, error: null, fetchedAt: 0 };
 }
 
-function errorText(err: unknown): string {
-  return err instanceof Error ? err.message : 'Something went wrong while loading jobs.';
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
 }
 
 /**
@@ -65,7 +65,7 @@ export function useJobs(filterQuery: string) {
       )
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setState({ ...initialState(filterQuery), status: 'error', error: errorText(err) });
+        setState({ ...initialState(filterQuery), status: 'error', error: toError(err) });
       });
     return () => controller.abort();
   }, [filterQuery, reloadToken, restoredQuery]);
@@ -90,7 +90,7 @@ export function useJobs(filterQuery: string) {
       )
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
-        setState((s) => ({ ...s, loadingMore: false, error: errorText(err) }));
+        setState((s) => ({ ...s, loadingMore: false, error: toError(err) }));
       });
   }, [filterQuery, state.status, state.hasMore, state.loadingMore, state.page]);
 

@@ -1,6 +1,5 @@
 import type { JobDetail, Stats } from '../api/types';
-import { countryName, formatDate, formatRelative, formatSalary } from '../lib/format';
-import { EMPLOYMENT_TYPE_LABELS, PAY_BAND_LABELS, PAY_BAND_RANGES, SENIORITY_LABELS, WORKPLACE_LABELS } from '../lib/labels';
+import { rich, useI18n, type I18n } from '../i18n';
 import { jobPath } from '../lib/router';
 import { CompanyLogo } from './CompanyLogo';
 import { Icon } from './Icon';
@@ -15,14 +14,6 @@ interface JobDetailViewProps {
   onClose?: () => void;
 }
 
-const METHOD_NOTES: Record<NonNullable<JobDetail['applyMethod']>, string> = {
-  source: "the company's own job board",
-  'ats-match': "the company's own job board",
-  description: 'the employer link in the posting',
-  'listing-page': "the job board's link to the employer",
-  'ats-discovery': "the company's own job board",
-};
-
 function hostOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, '');
@@ -31,10 +22,10 @@ function hostOf(url: string): string {
   }
 }
 
-function eligibility(job: JobDetail): string | null {
-  if (job.allowedCountries === null) return job.workplace === 'remote' ? 'Anywhere (no restriction found)' : null;
-  const names = job.allowedCountries.map(countryName);
-  return names.length > 6 ? `${names.slice(0, 6).join(', ')} +${names.length - 6} more` : names.join(', ');
+function eligibility(job: JobDetail, { t, fmt }: I18n): string | null {
+  if (job.allowedCountries === null) return job.workplace === 'remote' ? t.role.anywhere : null;
+  const names = job.allowedCountries.map(fmt.country);
+  return names.length > 6 ? `${names.slice(0, 6).join(', ')} ${t.role.moreCountries(names.length - 6)}` : names.join(', ');
 }
 
 /** Splits the stored plain-text description into paragraphs. */
@@ -49,33 +40,35 @@ function Description({ text }: { text: string }) {
 }
 
 export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewProps) {
-  const categoryName = stats?.categories.find((c) => c.id === job.category)?.name ?? job.category;
-  const salary = formatSalary(job.salary);
-  const posted = formatDate(job.postedAt) ?? formatDate(job.firstSeenAt);
+  const i18n = useI18n();
+  const { t, fmt } = i18n;
+  const categoryName = fmt.category(job.category, stats?.categories.find((c) => c.id === job.category)?.name);
+  const salary = fmt.salary(job.salary);
+  const posted = fmt.date(job.postedAt) ?? fmt.date(job.firstSeenAt);
   const fromBoard = job.applyMethod !== 'source';
 
   const facts: [string, string | null][] = [
-    ['Salary', salary],
-    ['Work mode', WORKPLACE_LABELS[job.workplace]],
-    ['Can work from', eligibility(job)],
-    ['Location', job.locations.join(' · ') || null],
-    ['Level', job.seniority ? SENIORITY_LABELS[job.seniority] : null],
-    ['Type', job.employmentType ? EMPLOYMENT_TYPE_LABELS[job.employmentType] : null],
-    ['Category', categoryName],
-    ['Pay band', job.companyTier ? `${PAY_BAND_LABELS[job.companyTier]} (${PAY_BAND_RANGES[job.companyTier]})` : null],
-    ['Posted', posted],
+    [t.role.facts.salary, salary],
+    [t.role.facts.workMode, t.workplace[job.workplace]],
+    [t.role.facts.canWorkFrom, eligibility(job, i18n)],
+    [t.role.facts.location, job.locations.join(' · ') || null],
+    [t.role.facts.level, job.seniority ? t.seniority[job.seniority] : null],
+    [t.role.facts.type, job.employmentType ? t.employmentType[job.employmentType] : null],
+    [t.role.facts.category, categoryName],
+    [t.role.facts.payBand, job.companyTier ? `${t.payBand[job.companyTier]} (${t.payBandRange[job.companyTier]})` : null],
+    [t.role.facts.posted, posted],
   ];
   const TitleTag = variant === 'page' ? 'h1' : 'h2';
 
   return (
-    <article className={`job-detail job-detail--${variant}`} aria-label={`${job.title} at ${job.company}`}>
+    <article className={`job-detail job-detail--${variant}`} aria-label={t.role.label(job.title, job.company)}>
       {variant === 'pane' && (
         <div className="job-detail__toolbar">
           <Link href={jobPath(job.id)} className="link-button">
-            Open full page
+            {t.role.openFullPage}
           </Link>
           {onClose && (
-            <button type="button" className="icon-button" onClick={onClose} aria-label="Close preview">
+            <button type="button" className="icon-button" onClick={onClose} aria-label={t.role.closePreview}>
               <Icon name="close" />
             </button>
           )}
@@ -84,7 +77,7 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
 
       {job.closedAt && (
         <div className="notice" role="status">
-          Removed by its source {formatRelative(job.closedAt)}. It's probably filled.
+          {t.role.removed(fmt.relative(job.closedAt))}
         </div>
       )}
 
@@ -99,7 +92,7 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
       <div className="job-detail__apply">
         {!job.closedAt && (
           <a className="button button--primary" href={job.applyUrl} target="_blank" rel="noopener noreferrer">
-            {job.applyDirect ? 'Apply on employer site' : `Apply on ${job.sourceName}`}
+            {job.applyDirect ? t.role.applyEmployer : t.role.applyOn(job.sourceName)}
             <Icon name="external" size={16} />
           </a>
         )}
@@ -107,25 +100,30 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
         <div className="apply-notes">
           <p className="verified">
             <span className="live__dot" aria-hidden="true" />
-            Verified open {formatRelative(job.lastSeenAt)}
+            {t.role.verifiedOpen(fmt.relative(job.lastSeenAt))}
           </p>
           {job.applyDirect ? (
             <p className="apply-note">
-              Goes to <span className="num">{hostOf(job.applyUrl)}</span>, found via {METHOD_NOTES[job.applyMethod ?? 'source']}.
+              {rich(t.role.goesTo, {
+                host: <span className="num">{hostOf(job.applyUrl)}</span>,
+                method: t.role.applyMethods[job.applyMethod ?? 'source'],
+              })}
               {fromBoard && (
                 <>
                   {' '}
-                  Listed on{' '}
-                  <a href={job.url} target="_blank" rel="noopener noreferrer">
-                    {job.sourceName}
-                  </a>
-                  .
+                  {rich(t.role.listedOn, {
+                    source: (
+                      <a href={job.url} target="_blank" rel="noopener noreferrer">
+                        {job.sourceName}
+                      </a>
+                    ),
+                  })}
                 </>
               )}
             </p>
           ) : (
             <p className="apply-note apply-note--board">
-              We couldn't verify the employer's own posting yet, so applying goes through {job.sourceName}.
+              {t.role.boardOnly(job.sourceName)}
             </p>
           )}
         </div>
@@ -143,7 +141,7 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
       </dl>
 
       {job.skills.length > 0 && (
-        <ul className="job-card__chips job-detail__skills" aria-label="Stack">
+        <ul className="job-card__chips job-detail__skills" aria-label={t.role.stack}>
           {job.skills.map((s) => (
             <li key={s} className="skill">
               {s}
@@ -152,13 +150,13 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
         </ul>
       )}
 
-      <section className="job-detail__description" aria-label="Description">
-        {job.description ? <Description text={job.description} /> : <p className="muted">No description from the source. See the original posting.</p>}
+      <section className="job-detail__description" aria-label={t.role.description}>
+        {job.description ? <Description text={job.description} /> : <p className="muted">{t.role.noDescription}</p>}
       </section>
 
       {job.alsoOn.length > 0 && (
         <p className="also-on">
-          Also listed on{' '}
+          {t.role.alsoListedOn}{' '}
           {job.alsoOn.map((d, i) => (
             <span key={`${d.source}-${i}`}>
               {i > 0 && ', '}

@@ -1,15 +1,7 @@
 import type { EmploymentType, PayTier, Seniority, Stats, Workplace } from '../api/types';
-import { countActiveFilters, EMPTY_FILTERS, toggle, type Filters } from '../lib/filters';
-import { countryName } from '../lib/format';
-import {
-  EMPLOYMENT_TYPE_LABELS,
-  MIN_SALARY_OPTIONS,
-  PAY_BAND_LABELS,
-  PAY_BAND_RANGES,
-  POSTED_OPTIONS,
-  SENIORITY_LABELS,
-  WORKPLACE_LABELS,
-} from '../lib/labels';
+import { useI18n } from '../i18n';
+import { countActiveFilters, EMPTY_FILTERS, SENIORITIES, TIERS, toggle, TYPES, WORKPLACES, type Filters } from '../lib/filters';
+import { MIN_SALARY_OPTIONS, POSTED_WITHIN_DAYS } from '../lib/labels';
 import { FilterSection } from './FilterSection';
 import { OptionList, type Option } from './OptionList';
 import { PillGroup } from './PillGroup';
@@ -20,8 +12,8 @@ interface FilterPanelProps {
   onChange: (next: Filters) => void;
 }
 
-function pillsOf<K extends string>(labels: Record<K, string>) {
-  return (Object.entries(labels) as [K, string][]).map(([value, label]) => ({ value, label }));
+function pillsOf<K extends string>(values: readonly K[], labels: Record<K, string>) {
+  return values.map((value) => ({ value, label: labels[value] }));
 }
 
 const ANY = '';
@@ -36,6 +28,7 @@ function countryRank(code: string): number {
 
 /** Every filter, grouped in collapsible sections (sidebar on desktop, sheet on mobile). */
 export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
+  const { locale, t, fmt } = useI18n();
   const set = <K extends keyof Filters>(key: K, value: Filters[K]) => onChange({ ...filters, [key]: value });
   /** Single-choice pills: pressing the active one clears it. */
   const single = (current: number | null, value: string) => (Number(value) === current ? null : Number(value));
@@ -44,13 +37,13 @@ export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
     .filter((c) => c.count > 0 || filters.category.includes(c.id))
     // "All Others" is a catch-all, so it goes last regardless of size.
     .sort((a, b) => Number(a.id === 'other') - Number(b.id === 'other') || b.count - a.count)
-    .map((c) => ({ value: c.id, label: c.name, count: c.count }));
+    .map((c) => ({ value: c.id, label: fmt.category(c.id, c.name), count: c.count }));
 
   const countryOptions: Option[] = [
-    { value: ANY, label: 'Anywhere' },
+    { value: ANY, label: t.filters.anywhere },
     ...(stats?.countries ?? [])
-      .map((code) => ({ value: code, label: countryName(code) }))
-      .sort((a, b) => countryRank(a.value) - countryRank(b.value) || a.label.localeCompare(b.label)),
+      .map((code) => ({ value: code, label: fmt.country(code) }))
+      .sort((a, b) => countryRank(a.value) - countryRank(b.value) || a.label.localeCompare(b.label, locale)),
   ];
 
   const skillOptions: Option[] = (stats?.skills ?? []).map((s) => ({ value: s.name, label: s.name, count: s.count }));
@@ -63,10 +56,10 @@ export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
   return (
     <div className="filter-panel">
       <div className="filter-panel__header">
-        <h2 className="filter-panel__title">Filters</h2>
+        <h2 className="filter-panel__title">{t.filters.title}</h2>
         {activeCount > 0 && (
           <button type="button" className="link-button" onClick={() => onChange({ ...EMPTY_FILTERS, q: filters.q })}>
-            Reset all
+            {t.filters.resetAll}
           </button>
         )}
       </div>
@@ -74,24 +67,24 @@ export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
       <label className="switch">
         <input type="checkbox" checked={filters.direct} onChange={(e) => set('direct', e.target.checked)} />
         <span className="switch__text">
-          <strong>Employer's own posting only</strong>
-          <span>Hide roles we can only link to a job board for.</span>
+          <strong>{t.filters.directOnly}</strong>
+          <span>{t.filters.directOnlyHint}</span>
         </span>
       </label>
 
-      <FilterSection title="Work mode" activeCount={filters.workplace.length} defaultOpen>
+      <FilterSection title={t.filters.workMode} activeCount={filters.workplace.length} defaultOpen>
         <PillGroup
-          label="Work mode"
-          pills={pillsOf(WORKPLACE_LABELS)}
+          label={t.filters.workMode}
+          pills={pillsOf(WORKPLACES, t.workplace)}
           selected={filters.workplace}
           onToggle={(v) => set('workplace', toggle(filters.workplace, v as Workplace))}
         />
       </FilterSection>
 
-      <FilterSection title="Can work from" activeCount={filters.country ? 1 : 0} defaultOpen>
-        <p className="filter-hint">Remote roles open to this country, plus hybrid and on-site roles located there.</p>
+      <FilterSection title={t.filters.canWorkFrom} activeCount={filters.country ? 1 : 0} defaultOpen>
+        <p className="filter-hint">{t.filters.canWorkFromHint}</p>
         <OptionList
-          label="Country"
+          label={t.filters.country}
           options={countryOptions}
           selected={[filters.country]}
           onToggle={(v) => set('country', v)}
@@ -101,9 +94,9 @@ export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
         />
       </FilterSection>
 
-      <FilterSection title="Category" activeCount={filters.category.length} defaultOpen>
+      <FilterSection title={t.filters.category} activeCount={filters.category.length} defaultOpen>
         <OptionList
-          label="Category"
+          label={t.filters.category}
           options={categoryOptions}
           selected={filters.category}
           onToggle={(v) => set('category', toggle(filters.category, v))}
@@ -111,28 +104,28 @@ export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
         />
       </FilterSection>
 
-      <FilterSection title="Career level" activeCount={filters.seniority.length} defaultOpen>
+      <FilterSection title={t.filters.careerLevel} activeCount={filters.seniority.length} defaultOpen>
         <PillGroup
-          label="Career level"
-          pills={pillsOf(SENIORITY_LABELS)}
+          label={t.filters.careerLevel}
+          pills={pillsOf(SENIORITIES, t.seniority)}
           selected={filters.seniority}
           onToggle={(v) => set('seniority', toggle(filters.seniority, v as Seniority))}
         />
       </FilterSection>
 
-      <FilterSection title="Minimum salary" activeCount={filters.minSalary ? 1 : 0} defaultOpen>
+      <FilterSection title={t.filters.minSalary} activeCount={filters.minSalary ? 1 : 0} defaultOpen>
         <PillGroup
-          label="Minimum salary"
-          pills={MIN_SALARY_OPTIONS.map((v) => ({ value: String(v), label: `$${v / 1000}k+` }))}
+          label={t.filters.minSalary}
+          pills={MIN_SALARY_OPTIONS.map((v) => ({ value: String(v), label: t.filters.salaryAtLeast(v) }))}
           selected={filters.minSalary ? [String(filters.minSalary)] : []}
           onToggle={(v) => set('minSalary', single(filters.minSalary, v))}
         />
-        <p className="filter-hint">≈ USD per year. Only roles that publish a salary.</p>
+        <p className="filter-hint">{t.filters.minSalaryHint}</p>
       </FilterSection>
 
-      <FilterSection title="Stack" activeCount={filters.skills.length}>
+      <FilterSection title={t.filters.stack} activeCount={filters.skills.length}>
         <OptionList
-          label="Stack"
+          label={t.filters.stack}
           options={skillOptions}
           selected={filters.skills}
           onToggle={(v) => set('skills', toggle(filters.skills, v))}
@@ -141,33 +134,33 @@ export function FilterPanel({ filters, stats, onChange }: FilterPanelProps) {
         />
       </FilterSection>
 
-      <FilterSection title="Employment type" activeCount={filters.type.length}>
+      <FilterSection title={t.filters.employmentType} activeCount={filters.type.length}>
         <PillGroup
-          label="Employment type"
-          pills={pillsOf(EMPLOYMENT_TYPE_LABELS)}
+          label={t.filters.employmentType}
+          pills={pillsOf(TYPES, t.employmentType)}
           selected={filters.type}
           onToggle={(v) => set('type', toggle(filters.type, v as EmploymentType))}
         />
       </FilterSection>
 
-      <FilterSection title="Pay band" activeCount={filters.tier.length}>
+      <FilterSection title={t.filters.payBand} activeCount={filters.tier.length}>
         <PillGroup
-          label="Pay band"
-          pills={(Object.keys(PAY_BAND_LABELS) as PayTier[]).map((band) => ({
+          label={t.filters.payBand}
+          pills={TIERS.map((band) => ({
             value: band,
-            label: PAY_BAND_LABELS[band],
-            hint: PAY_BAND_RANGES[band],
+            label: t.payBand[band],
+            hint: t.payBandRange[band],
           }))}
           selected={filters.tier}
           onToggle={(v) => set('tier', toggle(filters.tier, v as PayTier))}
         />
-        <p className="filter-hint">Median salary the company publishes across its open roles.</p>
+        <p className="filter-hint">{t.filters.payBandHint}</p>
       </FilterSection>
 
-      <FilterSection title="Posted within" activeCount={filters.postedWithin ? 1 : 0}>
+      <FilterSection title={t.filters.postedWithin} activeCount={filters.postedWithin ? 1 : 0}>
         <PillGroup
-          label="Posted within"
-          pills={POSTED_OPTIONS.map((o) => ({ value: String(o.value), label: o.label }))}
+          label={t.filters.postedWithin}
+          pills={POSTED_WITHIN_DAYS.map((days) => ({ value: String(days), label: t.filters.postedDays(days) }))}
           selected={filters.postedWithin ? [String(filters.postedWithin)] : []}
           onToggle={(v) => set('postedWithin', single(filters.postedWithin, v))}
         />

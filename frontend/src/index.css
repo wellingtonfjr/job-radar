@@ -331,6 +331,30 @@ input {
   align-items: center;
   gap: 16px;
 }
+.lang-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+.lang-switch__option {
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.lang-switch__option:hover {
+  color: var(--ink);
+}
+.lang-switch__option[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 .saved-link {
   display: inline-flex;
   align-items: center;
@@ -1240,6 +1264,10 @@ input {
   }
   .topbar__end {
     grid-area: end;
+    gap: 10px;
+  }
+  .brand__name {
+    white-space: nowrap;
   }
   .search {
     grid-area: search;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { countActiveFilters, EMPTY_FILTERS, parseFilters, serializeFilters, toggle } from '../src/lib/filters';
-import { cleanLocation, formatAge, formatSalary, locationChips } from '../src/lib/format';
+import { i18n } from '../src/i18n';
+import { cleanLocation } from '../src/lib/format';
 import { matchRoute } from '../src/lib/router';
 
 describe('filters', () => {
@@ -40,29 +41,48 @@ describe('filters', () => {
 
 describe('format', () => {
   const now = Date.parse('2026-10-15T12:00:00Z');
+  const en = i18n('en').fmt;
+  const pt = i18n('pt-BR').fmt;
 
   it.each([
-    ['2026-10-15T11:30:00Z', '30m ago'],
-    ['2026-10-15T07:00:00Z', '5h ago'],
-    ['2026-10-09T12:00:00Z', '6d ago'],
-    ['2026-09-24T12:00:00Z', '3wk ago'],
-    ['2026-06-15T12:00:00Z', '4mo ago'],
-  ])('formatAge(%s) = %s', (iso, expected) => {
-    expect(formatAge(iso, now)).toBe(expected);
+    ['2026-10-15T11:30:00Z', '30m', '30 min'],
+    ['2026-10-15T07:00:00Z', '5h', '5 h'],
+    ['2026-10-09T12:00:00Z', '6d', '6 d'],
+    ['2026-09-24T12:00:00Z', '3wk', '3 sem'],
+    ['2026-06-15T12:00:00Z', '4mo', '4 meses'],
+  ])('age(%s) = %s / %s', (iso, english, portuguese) => {
+    expect(en.age(iso, now)).toBe(english);
+    expect(pt.age(iso, now)).toBe(portuguese);
   });
 
   it('formats salaries compactly with currency and period', () => {
-    expect(formatSalary({ min: 170_000, max: 200_000, currency: 'USD', period: 'year' })).toBe('$170K – $200K');
-    expect(formatSalary({ min: 60_000, max: null, currency: 'EUR', period: 'year' })).toBe('€60K');
-    expect(formatSalary({ min: 50, max: 75, currency: 'USD', period: 'hour' })).toBe('$50 – $75/hr');
-    expect(formatSalary({ min: 90_000, max: 90_000, currency: 'GBP', period: 'year' })).toBe('£90K');
-    expect(formatSalary(null)).toBeNull();
+    expect(en.salary({ min: 170_000, max: 200_000, currency: 'USD', period: 'year' })).toBe('$170K – $200K');
+    expect(en.salary({ min: 60_000, max: null, currency: 'EUR', period: 'year' })).toBe('€60K');
+    expect(en.salary({ min: 50, max: 75, currency: 'USD', period: 'hour' })).toBe('$50 – $75/hr');
+    expect(en.salary({ min: 90_000, max: 90_000, currency: 'GBP', period: 'year' })).toBe('£90K');
+    expect(en.salary(null)).toBeNull();
+  });
+
+  it('formats salaries the Brazilian way in pt-BR', () => {
+    expect(pt.salary({ min: 170_000, max: 200_000, currency: 'USD', period: 'year' })).toBe('$\u00a0170\u00a0mil – $\u00a0200\u00a0mil');
+    expect(pt.salary({ min: 50, max: 75, currency: 'USD', period: 'hour' })).toBe('$\u00a050 – $\u00a075/h');
+  });
+
+  it('formats numbers, dates and relative times per locale', () => {
+    expect(en.count(20_980)).toBe('20,980');
+    expect(pt.count(20_980)).toBe('20.980');
+    expect(en.date('2026-10-01T12:00:00Z')).toBe('Oct 1, 2026');
+    expect(pt.date('2026-10-01T12:00:00Z')).toBe('1 de out. de 2026');
+    expect(en.relative('2026-10-15T09:00:00Z')).toMatch(/ago$/);
+    expect(pt.relative('2026-10-15T09:00:00Z')).toMatch(/^há /);
+    expect(pt.country('US')).toBe('Estados Unidos');
   });
 
   it('shows Worldwide for unrestricted remote jobs and caps location chips', () => {
-    expect(locationChips(['Remote'], 'remote', null)).toEqual(['Worldwide']);
-    expect(locationChips(['A', 'B', 'C', 'D', 'E'], 'remote', ['US'])).toEqual(['A', 'B', 'C', '+2 more']);
-    expect(locationChips(['Berlin'], 'onsite', null)).toEqual(['Berlin']);
+    expect(en.locations(['Remote'], 'remote', null)).toEqual(['Worldwide']);
+    expect(en.locations(['A', 'B', 'C', 'D', 'E'], 'remote', ['US'])).toEqual(['A', 'B', 'C', '+2 more']);
+    expect(en.locations(['Berlin'], 'onsite', null)).toEqual(['Berlin']);
+    expect(pt.locations(['Remote'], 'remote', null)).toEqual(['Qualquer lugar do mundo']);
   });
 
   it.each([

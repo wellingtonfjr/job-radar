@@ -1,5 +1,5 @@
 import type { SourceStatus } from '../api/types';
-import { formatCount, formatRelative } from '../lib/format';
+import { useI18n } from '../i18n';
 
 interface SourcesFooterProps {
   sources: SourceStatus[] | undefined;
@@ -10,27 +10,25 @@ interface SourcesFooterProps {
  * attribution the job boards' terms ask for.
  */
 export function SourcesFooter({ sources }: SourcesFooterProps) {
+  const { t, fmt } = useI18n();
   return (
     <footer className="footer" id="sources">
       <div className="footer__inner">
         <div className="footer__about">
           <p className="footer__brand">job-radar</p>
-          <p>
-            Company career pages (Greenhouse, Lever, Ashby and InHire boards) are scanned directly, so a role disappears as soon as the company
-            takes it down. Public job boards fill the gaps and always link back to the original posting.
-          </p>
+          <p>{t.footer.about}</p>
         </div>
         {sources && (
           <table className="sources">
-            <caption>Sources</caption>
+            <caption>{t.footer.sources}</caption>
             <thead>
               <tr>
-                <th scope="col">Source</th>
-                <th scope="col">Type</th>
+                <th scope="col">{t.footer.source}</th>
+                <th scope="col">{t.footer.type}</th>
                 <th scope="col" className="num">
-                  Open
+                  {t.footer.open}
                 </th>
-                <th scope="col">Last scan</th>
+                <th scope="col">{t.footer.lastScan}</th>
               </tr>
             </thead>
             <tbody>
@@ -42,10 +40,10 @@ export function SourcesFooter({ sources }: SourcesFooterProps) {
                       {s.name}
                     </a>
                   </th>
-                  <td>{s.kind === 'ats' ? 'Company ATS' : 'Job board'}</td>
-                  <td className="num">{formatCount(s.openJobs)}</td>
+                  <td>{t.footer.kind[s.kind]}</td>
+                  <td className="num">{fmt.count(s.openJobs)}</td>
                   <td>
-                    {s.lastRun ? formatRelative(s.lastRun.finishedAt ?? s.lastRun.startedAt) : 'never'}
+                    {s.lastRun ? fmt.relative(s.lastRun.finishedAt ?? s.lastRun.startedAt) : t.footer.never}
                     {s.lastRun && s.lastRun.status !== 'ok' && ` (${s.lastRun.status})`}
                   </td>
                 </tr>

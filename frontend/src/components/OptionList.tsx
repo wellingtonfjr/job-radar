@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { useI18n } from '../i18n';
 
 export interface Option {
   value: string;
@@ -20,6 +21,7 @@ interface OptionListProps {
 
 /** Checkbox (or radio) list for the filter sidebar, optionally searchable. */
 export function OptionList({ label, options, selected, onToggle, single = false, searchable = false, limit }: OptionListProps) {
+  const { t, fmt } = useI18n();
   const [term, setTerm] = useState('');
   const [showAll, setShowAll] = useState(false);
   const name = useId();
@@ -38,8 +40,8 @@ export function OptionList({ label, options, selected, onToggle, single = false,
         <div className="option-list__search">
           <input
             type="search"
-            placeholder={`Search ${label.toLowerCase()}`}
-            aria-label={`Search ${label.toLowerCase()}`}
+            placeholder={t.filters.search(label)}
+            aria-label={t.filters.search(label)}
             value={term}
             onChange={(e) => setTerm(e.target.value)}
           />
@@ -55,14 +57,14 @@ export function OptionList({ label, options, selected, onToggle, single = false,
               onChange={() => onToggle(option.value)}
             />
             <span className="option__label">{option.label}</span>
-            {option.count !== undefined && <span className="option__count">{option.count.toLocaleString('en')}</span>}
+            {option.count !== undefined && <span className="option__count">{fmt.count(option.count)}</span>}
           </label>
         ))}
-        {visible.length === 0 && <p className="option-list__empty">No matches</p>}
+        {visible.length === 0 && <p className="option-list__empty">{t.filters.noMatches}</p>}
       </div>
       {limit && !needle && matches.length > visible.length && (
         <button type="button" className="link-button" onClick={() => setShowAll(true)}>
-          Show all {matches.length}
+          {t.filters.showAll(matches.length)}
         </button>
       )}
     </div>

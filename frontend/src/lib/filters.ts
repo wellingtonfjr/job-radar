@@ -33,10 +33,11 @@ export const EMPTY_FILTERS: Filters = {
   direct: false,
 };
 
-const WORKPLACES: readonly Workplace[] = ['remote', 'hybrid', 'onsite'];
-const SENIORITIES: readonly Seniority[] = ['intern', 'junior', 'mid', 'senior', 'lead', 'executive'];
-const TYPES: readonly EmploymentType[] = ['full_time', 'part_time', 'contract', 'freelance', 'internship', 'temporary'];
-const TIERS: readonly PayTier[] = ['S', 'A', 'B'];
+export const WORKPLACES: readonly Workplace[] = ['remote', 'hybrid', 'onsite'];
+export const SENIORITIES: readonly Seniority[] = ['intern', 'junior', 'mid', 'senior', 'lead', 'executive'];
+export const TYPES: readonly EmploymentType[] = ['full_time', 'part_time', 'contract', 'freelance', 'internship', 'temporary'];
+// Pay band, from the median salary a company publishes (S ≥ $120k, A ≥ $90k, B ≥ $50k).
+export const TIERS: readonly PayTier[] = ['S', 'A', 'B'];
 
 function list(params: URLSearchParams, key: string): string[] {
   return (params.get(key) ?? '')
