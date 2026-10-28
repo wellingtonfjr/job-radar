@@ -117,7 +117,7 @@ export function createApp(db: Db, { corsOrigin, staticDir, rateLimitPerMinute = 
   });
 
   app.use("/api", apiLimiter);
-  app.use("/api/jobs", createJobsRouter(db));
+  app.use("/api/jobs", createJobsRouter(db, siteUrl));
   app.use("/api/stats", createStatsRouter(db));
 
   app.use("/api", (_req, res) => {

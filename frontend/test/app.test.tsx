@@ -63,6 +63,22 @@ describe('App', () => {
     expect(requests.some((r) => r.includes('category=design'))).toBe(true);
   });
 
+  it('links the RSS feed for the current search', async () => {
+    window.history.replaceState(null, '', '/?q=react&workplace=remote&direct=true');
+    render(<App />);
+    const feedLink = await screen.findByRole('link', { name: 'Subscribe to this search (RSS feed)' });
+    expect(feedLink).toHaveAttribute('href', '/api/jobs/feed.xml?q=react&workplace=remote&direct=true');
+    expect(document.head.querySelector('link[rel="alternate"][type="application/rss+xml"]')).toHaveAttribute(
+      'href',
+      '/api/jobs/feed.xml?q=react&workplace=remote&direct=true',
+    );
+
+    const sidebar = screen.getByRole('complementary', { name: 'Filters' });
+    await userEvent.click(await within(sidebar).findByRole('checkbox', { name: /Design/ }));
+    expect(feedLink).toHaveAttribute('href', '/api/jobs/feed.xml?q=react&category=design&workplace=remote&direct=true');
+    expect(document.head.querySelectorAll('link[rel="alternate"]')).toHaveLength(1);
+  });
+
   it('counts new roles within the filters in the header', async () => {
     render(<App />);
     const summary = await screen.findByText(/verified open/);

@@ -39,6 +39,11 @@ export function fetchJobs(query: string, signal?: AbortSignal): Promise<JobsResp
   return getJson<JobsResponse>(`/api/jobs${query ? `?${query}` : ''}`, signal);
 }
 
+/** The RSS feed for a search (same query string as fetchJobs). */
+export function feedUrl(query: string): string {
+  return `${API_BASE}/api/jobs/feed.xml${query ? `?${query}` : ''}`;
+}
+
 export function fetchJob(id: string, signal?: AbortSignal): Promise<JobDetail> {
   return getJson<JobDetail>(`/api/jobs/${encodeURIComponent(id)}`, signal);
 }

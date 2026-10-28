@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { feedUrl } from '../api/client';
 import type { Job, Stats } from '../api/types';
 import { ActiveFilters } from '../components/ActiveFilters';
 import { FilterPanel } from '../components/FilterPanel';
@@ -21,12 +22,20 @@ interface JobsPageProps {
 
 const DAY_MS = 86_400_000;
 
+const FEED_TEXT = {
+  link: 'RSS',
+  label: 'Subscribe to this search (RSS feed)',
+  title: 'job-radar: this search',
+};
+
 let savedScrollY = 0;
 
 export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
   const filters = useMemo(() => parseFilters(search), [search]);
   const selectedJob = new URLSearchParams(search).get('job');
-  const listing = useJobs(serializeFilters(filters));
+  const query = serializeFilters(filters);
+  const listing = useJobs(query);
+  const feed = feedUrl(query);
   const splitView = useMediaQuery(SPLIT_VIEW_QUERY);
   // The preview pane only takes room once a role is picked; until then the list gets the full width.
   const previewId = splitView ? selectedJob : null;
@@ -44,6 +53,17 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
   useEffect(() => {
     document.title = 'job-radar · Open roles, verified daily';
   }, []);
+
+  // Lets browsers and feed readers discover the feed for the current search.
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'alternate';
+    link.type = 'application/rss+xml';
+    link.title = FEED_TEXT.title;
+    link.href = feed;
+    document.head.appendChild(link);
+    return () => link.remove();
+  }, [feed]);
 
   const categoryName = (id: string) => stats?.categories.find((c) => c.id === id)?.name ?? id;
   const isNew = (job: Job) => {
@@ -88,10 +108,15 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
               ) : null}
             </p>
           </div>
-          <button type="button" className="button button--ghost filters-toggle" onClick={() => setSheetOpen(true)}>
-            <Icon name="filter" /> Filters
-            {activeCount > 0 && <span className="count-dot">{activeCount}</span>}
-          </button>
+          <div className="results__actions">
+            <a className="button button--ghost feed-link" href={feed} aria-label={FEED_TEXT.label} title={FEED_TEXT.label}>
+              <Icon name="rss" /> <span className="feed-link__text">{FEED_TEXT.link}</span>
+            </a>
+            <button type="button" className="button button--ghost filters-toggle" onClick={() => setSheetOpen(true)}>
+              <Icon name="filter" /> Filters
+              {activeCount > 0 && <span className="count-dot">{activeCount}</span>}
+            </button>
+          </div>
         </div>
 
         <ActiveFilters filters={filters} stats={stats} onChange={applyFilters} />
