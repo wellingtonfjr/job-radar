@@ -235,6 +235,13 @@ old (or the request fails). GitHub e-mails the person who last edited that
 workflow when a scheduled run fails. To try it by hand, run it from the
 Actions tab with a small `max_age_hours` (e.g. `0.01`), which should fail.
 
+The [Uptime](.github/workflows/uptime.yml) workflow checks `/health` and the
+home page every 10 minutes (retrying for about a minute, so a deploy or restart
+doesn't alert) and fails when either keeps failing; the alert is the same
+GitHub e-mail. GitHub runs scheduled workflows on a best-effort basis, so very
+short outages can go unnoticed; an external monitor (UptimeRobot, Better Stack)
+on `/health` is the upgrade if minute-level alerts matter.
+
 ### Accuracy audit
 
 Every `ACCURACY_AUDIT_DAYS` (default 7; `0` disables) the scheduler re-checks,

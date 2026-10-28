@@ -1,0 +1,70 @@
+# Uptime check: every 10 minutes, make sure the site answers.
+#
+# Why this exists: if the app goes down at 3 a.m. (a crashed machine, a bad
+# deploy, a Fly incident), nobody finds out. This checks /health (the process
+# is alive) and / (the page is served), and fails when either one keeps failing.
+#
+# Why GitHub Actions and not an external monitor: it needs no extra account or
+# secret, and it is free for a public repository. The trade-off: GitHub runs
+# scheduled workflows on a best-effort basis, so a check can start a few
+# minutes late, and an outage shorter than ~10 minutes can go unnoticed. An
+# external monitor (UptimeRobot, Better Stack) can be added later if
+# minute-level alerts matter.
+#
+# How the alert reaches us: when a scheduled run fails, GitHub e-mails the
+# person who last edited this file (the cron schedule). No secrets needed.
+#
+# To test by hand: Actions > Uptime > Run workflow, and set base_url to an
+# host that doesn't answer (e.g. https://radar-de-vagas-down.fly.dev).
+
+name: Uptime
+
+on:
+  schedule:
+    # Off the round minutes: GitHub's scheduler is busiest on the hour.
+    - cron: "4-59/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Site to check"
+        required: false
+        default: "https://radar-de-vagas.fly.dev"
+
+# Don't pile up runs if GitHub is slow; the next one checks again anyway.
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+# The automatic GitHub token isn't used; keep it read-only.
+permissions:
+  contents: read
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check /health and the home page
+        env:
+          # A scheduled run has no inputs, so fall back to production.
+          BASE_URL: ${{ inputs.base_url || 'https://radar-de-vagas.fly.dev' }}
+        run: |
+          set -euo pipefail
+
+          # --retry also retries connection errors and 5xx answers, so a
+          # machine that is restarting (e.g. during a deploy) doesn't raise an
+          # alert; about a minute of failures in a row does.
+          check() {
+            if ! curl --fail --silent --show-error --output /dev/null \
+                      --max-time 15 --retry 5 --retry-delay 10 --retry-all-errors \
+                      "$1"; then
+              echo "::error::$1 is not answering"
+              return 1
+            fi
+            echo "OK: $1"
+          }
+
+          status=0
+          check "$BASE_URL/health" || status=1
+          check "$BASE_URL/" || status=1
+          exit $status
