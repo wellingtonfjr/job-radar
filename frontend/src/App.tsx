@@ -33,7 +33,10 @@ export default function App() {
 
   const debouncedSearch = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS);
   const latest = useRef({ route, search });
-  latest.current = { route, search };
+  // Declared before the effect below so it sees this render's values.
+  useEffect(() => {
+    latest.current = { route, search };
+  });
   useEffect(() => {
     const { route: current, search: currentSearch } = latest.current;
     if (current.name !== 'jobs') return;
