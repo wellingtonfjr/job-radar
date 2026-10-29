@@ -276,17 +276,22 @@ read in full, and Jobicy, Arbeitnow and Get on Board aren't when they hit their
 page cap or a page fails, so the scheduler re-checks their open roles against
 the employer's ATS with the audit's verifiers, for roles whose apply link (or a
 link in the description) points to a Greenhouse, Lever, Ashby or
-SmartRecruiters posting.
+SmartRecruiters posting. Himalayas roles with no such posting are checked
+against Himalayas' own company search (`/jobs/api/search?company={slug}`):
+a listing the employer took down disappears from it (its page then redirects
+to the Himalayas home), so it's closed like any other.
 
 - **Budget:** `LIVENESS_REQUESTS_PER_HOUR` (default 300; `0` disables). Each
   tick spends what has accrued since the last check, at most one hour's
   worth. A Greenhouse, Lever or SmartRecruiters posting costs one request; an Ashby board one
-  request for all its roles. Requests go two at a time, at least 1 s apart per
+  request for all its roles, and so does a Himalayas company (read 20 roles
+  per page, at most 5 pages). Requests go two at a time, at least 1 s apart per
   host, with a 15 s timeout, identified as `job-radar-liveness-check`.
 - **Rotation:** roles never checked go first, then the oldest check, so every
   checkable role is revisited in turn.
 - **Closure:** a role is closed after **two consecutive** "closed" answers
-  (404, or missing from its Ashby board); an "open" answer resets the count and
+  (404, or missing from its Ashby board or from its Himalayas company's list
+  when that list was read in full); an "open" answer resets the count and
   "unknown" (403, 429, 5xx, timeouts) changes nothing. A role closed this way
   stays closed even if the job board keeps listing it, and any copy of it from
   another source that it was hiding is shown again.

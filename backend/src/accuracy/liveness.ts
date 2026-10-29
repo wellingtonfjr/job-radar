@@ -12,7 +12,8 @@ import { CLOSED_VERDICTS_TO_CLOSE, createVerifier, type AuditNet, type PostingRe
  * never read in full, and Jobicy, Arbeitnow and Get on Board aren't when they
  * hit their page cap or a page fails, so their roles are re-checked here
  * through the ATS posting their apply link points to, with the audit's
- * verifiers. Roles are taken oldest check
+ * verifiers. Himalayas roles with no employer posting are checked against
+ * Himalayas' own company search instead. Roles are taken oldest check
  * first (never-checked first) within a request budget, so the whole set is
  * covered in rotation. A role is closed after CLOSED_VERDICTS_TO_CLOSE
  * consecutive "closed" verdicts; "unknown" changes nothing.
@@ -68,9 +69,13 @@ function postingKey(ref: PostingRef): string {
   return `${ref.provider}:${ref.eu ? "eu:" : ""}${ref.board}:${ref.id}`;
 }
 
-/** One request per Greenhouse, Lever or SmartRecruiters posting; one per Ashby board. */
+/**
+ * One request per Greenhouse, Lever or SmartRecruiters posting; one per Ashby
+ * board; one per Himalayas company (more only for companies with over 20
+ * open roles, at most HIMALAYAS_MAX_PAGES).
+ */
 function requestKey(ref: PostingRef): string {
-  return ref.provider === "ashby" ? `ashby:${ref.board}` : postingKey(ref);
+  return ref.provider === "ashby" || ref.provider === "himalayas" ? `${ref.provider}:${ref.board}` : postingKey(ref);
 }
 
 export async function runLivenessCheck(db: Db, net: AuditNet, options: LivenessOptions): Promise<LivenessSummary> {

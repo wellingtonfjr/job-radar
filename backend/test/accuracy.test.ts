@@ -2,7 +2,7 @@ import type { AddressInfo } from "node:net";
 import { describe, expect, it, vi } from "vitest";
 import { isAuditDue, runAccuracyAudit } from "../src/accuracy/audit.js";
 import { countVerdicts, coverage, falseClosureRate, openPrecision, percentile, ratio } from "../src/accuracy/metrics.js";
-import { AUDIT_USER_AGENT, createAuditNet, createVerifier, parsePostingRef, refFromAtsRow, type AuditNet } from "../src/accuracy/verify.js";
+import { AUDIT_USER_AGENT, createAuditNet, createVerifier, himalayasRef, parsePostingRef, refFromAtsRow, type AuditNet } from "../src/accuracy/verify.js";
 import { getAccuracy } from "../src/api/accuracy.js";
 import { createApp } from "../src/app.js";
 import { openDb, type Db } from "../src/db/index.js";
@@ -60,6 +60,16 @@ describe("posting refs", () => {
     expect(refFromAtsRow("lever", "acme", LEVER_ID)).toEqual({ provider: "lever", board: "acme", id: LEVER_ID });
     expect(refFromAtsRow("remotive", "all", "1")).toBeNull();
     expect(refFromAtsRow("inhire", "acme", "1")).toBeNull();
+  });
+
+  it("builds Himalayas refs from the posting URL, without its query", () => {
+    expect(himalayasRef("himalayas", "https://himalayas.app/companies/dualentry/jobs/frontend-software-engineer-mid-level-7781816248?utm_source=api")).toEqual({
+      provider: "himalayas",
+      board: "dualentry",
+      id: "https://himalayas.app/companies/dualentry/jobs/frontend-software-engineer-mid-level-7781816248",
+    });
+    expect(himalayasRef("himalayas", "1")).toBeNull();
+    expect(himalayasRef("jobicy", "https://himalayas.app/companies/acme/jobs/x")).toBeNull();
   });
 });
 
