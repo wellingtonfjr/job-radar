@@ -117,6 +117,47 @@ describe("liveness check", () => {
     expect(canonical()).toEqual([{ id: "remotive:r1" }]);
   });
 
+  it("checks Himalayas roles with no employer posting against Himalayas' company search", async () => {
+    const db = openDb(":memory:");
+    const posting = (company: string, slug: string) => `https://himalayas.app/companies/${company}/jobs/${slug}`;
+    const search = (company: string, page = 1) => `https://himalayas.app/jobs/api/search?company=${company}&page=${page}`;
+    await seed(db, [
+      { id: posting("acme", "frontend-1") },
+      { id: posting("acme", "backend-2") }, // taken down by the employer
+      { id: posting("big", "data-3") }, // missing from a list we couldn't read in full
+      { id: posting("big", "qa-4"), apply: "https://job-boards.greenhouse.io/big/jobs/4" }, // its ATS posting wins
+    ]);
+    const twenty = Array.from({ length: 20 }, (_, i) => ({ guid: posting("big", `other-${i}`) }));
+    const routes = {
+      // The feed's links carry ?utm_source=api; the search's guids don't.
+      [search("acme")]: { status: 200, body: { totalCount: 1, jobs: [{ guid: `${posting("acme", "frontend-1")}?utm_source=api` }] } },
+      [search("big")]: { status: 200, body: { totalCount: 30, jobs: twenty } },
+      [search("big", 2)]: { status: 503 },
+      ["https://boards-api.greenhouse.io/v1/boards/big/jobs/4"]: { status: 200 },
+    };
+
+    const net = fakeNet(routes);
+    const summary = await runLivenessCheck(db, net, { now: hoursLater(1), budget: 10 });
+    expect(summary).toMatchObject({ checked: 4, requests: 3, open: 2, closed: 1, unknown: 1, retired: 0 });
+    expect(net.calls.filter((u) => u === search("acme"))).toHaveLength(1);
+    const id = (company: string, slug: string) => `himalayas:${posting(company, slug)}`;
+    expect(state(db, id("acme", "backend-2"))).toMatchObject({ closed_at: null, closed_streak: 1 });
+    expect(state(db, id("big", "data-3"))).toMatchObject({ closed_at: null, closed_streak: 0 });
+
+    // The second "closed" in a row closes it; the others stay open.
+    await runLivenessCheck(db, fakeNet(routes), { now: hoursLater(2), budget: 10 });
+    expect(state(db, id("acme", "backend-2")).closed_at).toBe(hoursLater(2).toISOString());
+    expect(state(db, id("acme", "frontend-1")).closed_at).toBeNull();
+    expect(state(db, id("big", "data-3")).closed_at).toBeNull();
+  });
+
+  it("treats an unreadable Himalayas company search as unknown", async () => {
+    const db = openDb(":memory:");
+    await seed(db, [{ id: "https://himalayas.app/companies/acme/jobs/frontend-1" }]);
+    const summary = await runLivenessCheck(db, fakeNet({}), { now: hoursLater(1), budget: 10 });
+    expect(summary).toMatchObject({ checked: 1, unknown: 1, closed: 0 });
+  });
+
   it("ignores unknown verdicts either way", async () => {
     const db = openDb(":memory:");
     await seed(db, [{ id: "1", apply: "https://job-boards.greenhouse.io/acme/jobs/1" }]);

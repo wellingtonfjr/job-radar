@@ -4,13 +4,15 @@
  * Only answers we can trust are given: the ATS's own public API either has
  * the posting or says it doesn't. Everything else is `unknown`, never a
  * guess. Job-board pages are deliberately not used: Himalayas answers 403 to
- * scripts, and Jobicy, Arbeitnow and Remotive answer 200 even for closed
- * roles, so a page loading says nothing.
+ * scripts, and Jobicy and Arbeitnow answer 200 even for closed roles, so a
+ * page loading says nothing. Himalayas is the one job board checked, through
+ * its public company search API rather than its pages (see createVerifier).
  */
 
 export type Verdict = "open" | "closed" | "unknown";
 
-export type AtsProvider = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+/** Where a posting can be checked: an employer ATS, or Himalayas' own API. */
+export type AtsProvider = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "himalayas";
 
 /** One posting on one company's board. */
 export interface PostingRef {
@@ -59,6 +61,25 @@ export function refFromAtsRow(source: string, feed: string, externalId: string):
   }
   return null;
 }
+
+/**
+ * The ref for a Himalayas row: its company slug and guid (the posting URL),
+ * checked against Himalayas' company search when no employer ATS posting is
+ * known for it.
+ */
+export function himalayasRef(source: string, externalId: string): PostingRef | null {
+  if (source !== "himalayas") return null;
+  const slug = /himalayas\.app\/companies\/([^/?#]+)\/jobs\//i.exec(externalId)?.[1];
+  return slug ? { provider: "himalayas", board: decodeURIComponent(slug), id: himalayasGuid(externalId) } : null;
+}
+
+/** A Himalayas guid without query or fragment (the feed adds `?utm_source=api` to some links). */
+function himalayasGuid(url: string): string {
+  return url.replace(/[?#].*$/, "").replace(/\/$/, "").toLowerCase();
+}
+
+/** Pages of Himalayas' company search read per company (20 roles each). */
+export const HIMALAYAS_MAX_PAGES = 5;
 
 /** A finished GET: status and the whole body. */
 export interface AuditResponse {
@@ -126,6 +147,11 @@ function byStatus(response: AuditResponse | null): Verdict {
   return "unknown";
 }
 
+interface HimalayasSearch {
+  totalCount?: number;
+  jobs?: { guid?: string }[];
+}
+
 interface AshbyBoard {
   jobs?: { id?: string; isListed?: boolean }[];
 }
@@ -134,9 +160,42 @@ interface AshbyBoard {
  * A verifier for one audit run. Greenhouse, Lever and SmartRecruiters have
  * a per-posting endpoint that answers 200 or 404. Ashby has none, so each board's list is
  * fetched once per run and every posting is looked up in it.
+ *
+ * Himalayas works like Ashby: each company's open roles are read once per
+ * run from its search API (`/jobs/api/search?company={slug}`, 20 per page).
+ * A Himalayas listing that is gone redirects visitors to the home page, so
+ * this is what catches roles the employer took down. A role missing from a
+ * list read in full is closed; when the list was cut short (more than
+ * HIMALAYAS_MAX_PAGES pages, or a page failed) it is `unknown`.
  */
 export function createVerifier(net: AuditNet): (ref: PostingRef) => Promise<Verdict> {
   const ashbyBoards = new Map<string, Promise<Map<string, boolean> | null>>();
+  const himalayasCompanies = new Map<string, Promise<{ guids: Set<string>; complete: boolean } | null>>();
+
+  function himalayasCompany(slug: string): Promise<{ guids: Set<string>; complete: boolean } | null> {
+    let pending = himalayasCompanies.get(slug);
+    if (!pending) {
+      pending = (async () => {
+        const guids = new Set<string>();
+        for (let page = 1; page <= HIMALAYAS_MAX_PAGES; page++) {
+          const response = await net.get(`https://himalayas.app/jobs/api/search?company=${encodeURIComponent(slug)}&page=${page}`);
+          if (response?.status !== 200) return page === 1 ? null : { guids, complete: false };
+          let data: HimalayasSearch;
+          try {
+            data = JSON.parse(response.body) as HimalayasSearch;
+          } catch {
+            return page === 1 ? null : { guids, complete: false };
+          }
+          if (!Array.isArray(data.jobs) || typeof data.totalCount !== "number") return page === 1 ? null : { guids, complete: false };
+          for (const job of data.jobs) if (job.guid) guids.add(himalayasGuid(job.guid));
+          if (data.jobs.length === 0 || guids.size >= data.totalCount) return { guids, complete: guids.size >= data.totalCount };
+        }
+        return { guids, complete: false };
+      })();
+      himalayasCompanies.set(slug, pending);
+    }
+    return pending;
+  }
 
   function ashbyBoard(board: string): Promise<Map<string, boolean> | null> {
     let pending = ashbyBoards.get(board);
@@ -166,6 +225,12 @@ export function createVerifier(net: AuditNet): (ref: PostingRef) => Promise<Verd
         return byStatus(await net.get(`https://api${ref.eu ? ".eu" : ""}.lever.co/v0/postings/${board}/${encodeURIComponent(ref.id)}`));
       case "smartrecruiters":
         return byStatus(await net.get(`https://api.smartrecruiters.com/v1/companies/${board}/postings/${encodeURIComponent(ref.id)}`));
+      case "himalayas": {
+        const company = await himalayasCompany(ref.board);
+        if (!company) return "unknown";
+        if (company.guids.has(himalayasGuid(ref.id))) return "open";
+        return company.complete ? "closed" : "unknown";
+      }
       case "ashby": {
         const listed = await ashbyBoard(ref.board);
         // A board we couldn't read says nothing about the posting.

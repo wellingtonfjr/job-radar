@@ -1,5 +1,5 @@
 import type { Db } from "../db/index.js";
-import { parsePostingRef, refFromAtsRow, type PostingRef } from "./verify.js";
+import { himalayasRef, parsePostingRef, refFromAtsRow, type PostingRef } from "./verify.js";
 
 /** The job columns a posting ref is derived from. */
 export interface RefRow {
@@ -17,6 +17,7 @@ const ATS_SOURCES = ["greenhouse", "lever", "ashby", "smartrecruiters"];
  * Maps a stored role to the ATS posting it can be checked through, or null.
  * ATS rows are checked by their own board and id; job-board rows through
  * their resolved apply link, then any posting link in the description or URL.
+ * Himalayas rows with no employer posting fall back to Himalayas' own API.
  */
 export function createRefLookup(db: Db): (row: RefRow) => PostingRef | null {
   const atsRowByUrl = db.prepare(
@@ -38,6 +39,6 @@ export function createRefLookup(db: Db): (row: RefRow) => PostingRef | null {
       const ref = parsePostingRef(link);
       if (ref) return ref;
     }
-    return null;
+    return himalayasRef(row.source, row.external_id);
   };
 }
