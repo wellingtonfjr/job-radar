@@ -198,7 +198,7 @@ describe("runIngestion", () => {
     ]);
   });
 
-  it("hides evergreen ATS postings but keeps them open, and still hides their job-board copies", async () => {
+  it("hides postings older than the listing age from every source, keeps them open, and still hides their copies", async () => {
     const ats = fakeSource("ats");
     const agg = fakeSource("agg", "aggregator");
     const daysBefore = (d: number) => new Date(T0.getTime() - d * 86_400_000).toISOString();
@@ -208,8 +208,8 @@ describe("runIngestion", () => {
           feed: "acme",
           complete: true,
           jobs: [
-            rawJob({ externalId: "new", title: "Backend Engineer", postedAt: daysBefore(179) }),
-            rawJob({ externalId: "old", title: "Forward Deployed Engineer", postedAt: daysBefore(181) }),
+            rawJob({ externalId: "new", title: "Backend Engineer", postedAt: daysBefore(59) }),
+            rawJob({ externalId: "old", title: "Forward Deployed Engineer", postedAt: daysBefore(61) }),
           ],
         },
       ],
@@ -222,8 +222,9 @@ describe("runIngestion", () => {
           complete: true,
           jobs: [
             rawJob({ externalId: "copy", title: "Forward Deployed Engineer", postedAt: daysBefore(2) }),
-            // Aggregators aren't subject to the age rule.
-            rawJob({ externalId: "aged", title: "Data Analyst", company: "Globex", postedAt: daysBefore(400) }),
+            // Job boards are subject to the age rule too.
+            rawJob({ externalId: "aged", title: "Data Analyst", company: "Globex", postedAt: daysBefore(61) }),
+            rawJob({ externalId: "fresh", title: "QA Tester", company: "Initech", postedAt: daysBefore(10) }),
           ],
         },
       ],
@@ -232,8 +233,9 @@ describe("runIngestion", () => {
     await runIngestion(db, [ats, agg], { staleAfterDays: 30, now: () => T0 });
 
     expect(db.prepare("SELECT id, canonical, closed_at FROM jobs ORDER BY id").all()).toEqual([
-      { id: "agg:aged", canonical: 1, closed_at: null },
+      { id: "agg:aged", canonical: 0, closed_at: null },
       { id: "agg:copy", canonical: 0, closed_at: null },
+      { id: "agg:fresh", canonical: 1, closed_at: null },
       { id: "ats:new", canonical: 1, closed_at: null },
       { id: "ats:old", canonical: 0, closed_at: null },
     ]);

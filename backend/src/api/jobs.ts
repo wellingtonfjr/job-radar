@@ -163,7 +163,7 @@ export function buildJobFilter(query: JobsQuery, now: Date): { where: string; pa
   const params: Record<string, unknown> = {};
 
   // Filtering by source shows that source's own copies; otherwise one copy
-  // per opening, without evergreen ATS postings (see recomputeCanonical).
+  // per opening, without postings older than the listing age (see recomputeCanonical).
   if (query.source) {
     conditions.push("j.source = @source");
     params.source = query.source;
