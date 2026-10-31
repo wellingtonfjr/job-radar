@@ -42,7 +42,7 @@ describe("SEO and link previews", () => {
       ],
       errors: [],
     });
-    // Pinned: the fixed dates above must not age into evergreen postings.
+    // Pinned: the fixed dates above must not age past the listing age.
     await runIngestion(db, [ats], { staleAfterDays: 30, now: () => new Date("2026-10-28T00:00:00Z") });
     db.prepare("UPDATE jobs SET closed_at = '2026-10-25T00:00:00Z' WHERE id = 'greenhouse:2'").run();
     // Titles come from third parties: this one tries to break out of the HTML.

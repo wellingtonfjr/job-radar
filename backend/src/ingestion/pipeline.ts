@@ -286,10 +286,12 @@ export function retireStaleJobs(db: Db, now: Date, stale: number | StaleWindows)
 }
 
 /**
- * ATS postings older than this are evergreen "talent pools" (some Lever
- * boards keep the same posting open for years), not current openings.
+ * Postings older than this are left out of the default listing. A role
+ * posted months ago that is still on the board is usually an evergreen
+ * "talent pool" (some Lever boards keep the same posting open for years) or
+ * a hard-to-fill role, not what someone looking for a job now wants to see.
  */
-export const EVERGREEN_AFTER_DAYS = 180;
+export const MAX_LISTING_AGE_DAYS = 60;
 
 /**
  * Decides which open jobs the default listing shows (`canonical = 1`); the
@@ -300,20 +302,21 @@ export const EVERGREEN_AFTER_DAYS = 180;
  *   employer's own ATS beats aggregators). Same-source matches are left
  *   alone — one company posting "Account Executive" in five cities is five
  *   real openings.
- * - Evergreen ATS postings (posted over EVERGREEN_AFTER_DAYS ago) are hidden.
- *   They stay open and still hide their aggregator copies, so the same pool
- *   doesn't resurface through a job board; the `source` filter still shows them.
- *   Aggregators are left alone: their feeds only carry recent postings.
+ * - Postings older than MAX_LISTING_AGE_DAYS (by `posted_at`, else when we
+ *   first saw them) are hidden, from every source. They stay open (their
+ *   page works by link, and the `source` filter still shows them) and still
+ *   hide their job-board copies, so the same posting doesn't resurface
+ *   through a board with a newer date.
  * - Roles with enough recent "Role closed?" reports are hidden pending
- *   review (see accuracy/reports.ts). Like evergreen postings they stay open,
+ *   review (see accuracy/reports.ts). Like old postings they stay open,
  *   so they still hide their copies: a report hides the opening, not just
  *   one source's listing of it.
  */
 export function recomputeCanonical(db: Db, now: Date): void {
-  const evergreenBefore = new Date(now.getTime() - EVERGREEN_AFTER_DAYS * 86_400_000).toISOString();
+  const postedBefore = new Date(now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000).toISOString();
   db.prepare(
     `UPDATE jobs SET canonical = closed_at IS NULL
-      AND NOT (source_rank = @atsRank AND COALESCE(posted_at, first_seen_at) < @evergreenBefore)
+      AND COALESCE(posted_at, first_seen_at) >= @postedBefore
       AND NOT ${HIDDEN_BY_REPORTS}
       AND NOT EXISTS (
         SELECT 1 FROM jobs o
@@ -322,7 +325,7 @@ export function recomputeCanonical(db: Db, now: Date): void {
           AND o.closed_at IS NULL
           AND (o.source_rank < jobs.source_rank OR (o.source_rank = jobs.source_rank AND o.source < jobs.source))
       )`,
-  ).run({ atsRank: SOURCE_RANK.ats, evergreenBefore, ...hiddenByReportsParams(now) });
+  ).run({ postedBefore, ...hiddenByReportsParams(now) });
 }
 
 const TIER_THRESHOLDS: [string, number][] = [
