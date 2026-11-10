@@ -1,7 +1,11 @@
+import fs from "node:fs";
+import path from "node:path";
 import type { Db } from "./index.js";
 
 /** app_state key set once every old description has left `jobs`. */
 const DONE_KEY = "descriptions_moved";
+/** app_state key set once the database was compacted after the move. */
+const COMPACTED_KEY = "compacted_after_description_move";
 
 /**
  * Moves descriptions stored in `jobs` (before job_descriptions existed) into
@@ -38,7 +42,7 @@ export function descriptionsMoved(db: Db): boolean {
  */
 export async function moveDescriptions(
   db: Db,
-  { batchSize = 500, pauseMs = 100, log = console.log }: { batchSize?: number; pauseMs?: number; log?: (message: string) => void } = {},
+  { batchSize = 200, pauseMs = 500, log = console.log }: { batchSize?: number; pauseMs?: number; log?: (message: string) => void } = {},
 ): Promise<number> {
   if (descriptionsMoved(db)) return 0;
   let total = 0;
@@ -56,4 +60,47 @@ export async function moveDescriptions(
   );
   log(`[db] moved ${total} descriptions to job_descriptions`);
   return total;
+}
+
+/**
+ * Once, after the move: rewrites the database compactly (VACUUM). The move
+ * leaves `jobs` pages mostly empty, so scans still read ~3x the pages they
+ * need until this runs. VACUUM blocks the process (minutes on a large
+ * database) and, in WAL mode, needs about the database's size free on its
+ * disk, so it only runs when that space is there; otherwise it logs why and
+ * tries again on the next start.
+ */
+export function compactOnce(
+  db: Db,
+  dbPath: string,
+  { log = console.log, freeBytes = defaultFreeBytes }: { log?: (message: string) => void; freeBytes?: (dir: string) => number } = {},
+): boolean {
+  if (dbPath === ":memory:" || !descriptionsMoved(db)) return false;
+  if (db.prepare("SELECT 1 FROM app_state WHERE key = ?").get(COMPACTED_KEY)) return false;
+  const size = fs.statSync(dbPath).size;
+  const free = freeBytes(path.dirname(dbPath));
+  // The rewrite goes through the WAL first: up to the database's size, plus a margin.
+  const needed = size + 64 * 1024 * 1024;
+  if (free < needed) {
+    log(`[db] not compacting: ${mb(free)} free, needs ${mb(needed)}; will retry on the next start`);
+    return false;
+  }
+  const started = Date.now();
+  db.exec("VACUUM");
+  db.pragma("wal_checkpoint(TRUNCATE)");
+  db.prepare("INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(
+    COMPACTED_KEY,
+    new Date().toISOString(),
+  );
+  log(`[db] compacted ${mb(size)} -> ${mb(fs.statSync(dbPath).size)} in ${((Date.now() - started) / 1000).toFixed(1)} s`);
+  return true;
+}
+
+function defaultFreeBytes(dir: string): number {
+  const stats = fs.statfsSync(dir);
+  return stats.bavail * stats.bsize;
+}
+
+function mb(bytes: number): string {
+  return `${Math.round(bytes / 1e6)} MB`;
 }

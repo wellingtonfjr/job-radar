@@ -124,21 +124,24 @@ export function getStats(db: Db, now: Date) {
 }
 
 /**
- * The stats scan every open role, and every page asks for them, so they're
- * computed at most once per `ttlMs`, and again as soon as a source run
- * finishes (the data only changes much with ingestion).
+ * The stats scan every open role and every page asks for them, so they're
+ * computed at most once per `ttlMs`. Not on every source run: an ingestion
+ * finishes a dozen runs in a row, and each recompute blocks the process.
  */
-export function createStatsRouter(db: Db, { ttlMs = 10 * 60_000 }: { ttlMs?: number } = {}): Router {
+export function cachedStats(db: Db, ttlMs = 10 * 60_000, clock: () => number = Date.now): () => ReturnType<typeof getStats> {
+  let cached: { at: number; body: ReturnType<typeof getStats> } | null = null;
+  return () => {
+    const now = clock();
+    if (!cached || now - cached.at >= ttlMs) cached = { at: now, body: getStats(db, new Date(now)) };
+    return cached.body;
+  };
+}
+
+export function createStatsRouter(db: Db): Router {
   const router = Router();
-  const lastRun = db.prepare("SELECT MAX(id) AS id FROM source_runs WHERE finished_at IS NOT NULL");
-  let cached: { runId: number | null; at: number; body: ReturnType<typeof getStats> } | null = null;
+  const stats = cachedStats(db);
   router.get("/", (_req, res) => {
-    const now = Date.now();
-    const runId = (lastRun.get() as { id: number | null }).id;
-    if (!cached || cached.runId !== runId || now - cached.at >= ttlMs) {
-      cached = { runId, at: now, body: getStats(db, new Date(now)) };
-    }
-    res.json(cached.body);
+    res.json(stats());
   });
   return router;
 }

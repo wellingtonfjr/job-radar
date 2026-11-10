@@ -5,7 +5,7 @@ import { createAuditNet } from "./accuracy/verify.js";
 import { createReportQueue } from "./api/reports.js";
 import { createApp } from "./app.js";
 import { config } from "./config.js";
-import { moveDescriptions } from "./db/descriptions.js";
+import { compactOnce, moveDescriptions } from "./db/descriptions.js";
 import { openDb } from "./db/index.js";
 import { staleWindowsFor } from "./ingestion/pipeline.js";
 import { startScheduler } from "./ingestion/scheduler.js";
@@ -49,8 +49,13 @@ const scheduler =
     : null;
 if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `npm run ingest` manually.");
 
-// One-off, in the background: moves descriptions stored before job_descriptions existed.
-moveDescriptions(db).catch((err: unknown) => console.error("[db] moving descriptions failed:", err));
+// One-off, in the background: moves descriptions stored before job_descriptions
+// existed, then compacts the database once (blocks for a while; see compactOnce).
+// Don't run `npm run ingest` or the audit by hand until "[db] compacted" is logged:
+// a second connection's long reads would let the WAL grow during the move.
+moveDescriptions(db)
+  .then(() => compactOnce(db, config.dbPath))
+  .catch((err: unknown) => console.error("[db] moving descriptions failed:", err));
 
 function shutdown(): void {
   scheduler?.stop();

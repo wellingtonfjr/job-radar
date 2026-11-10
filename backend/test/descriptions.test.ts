@@ -2,7 +2,8 @@ import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app.js";
-import { descriptionsMoved, moveDescriptions, moveDescriptionsBatch } from "../src/db/descriptions.js";
+import { cachedStats } from "../src/api/stats.js";
+import { compactOnce, descriptionsMoved, moveDescriptions, moveDescriptionsBatch } from "../src/db/descriptions.js";
 import { openDb, type Db } from "../src/db/index.js";
 import { pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
 import { findOpenJob } from "../src/web/seo.js";
@@ -98,19 +99,57 @@ describe("job descriptions", () => {
 });
 
 describe("stats cache", () => {
-  it("serves the same numbers until a source run finishes", async () => {
+  it("serves the same numbers within the cache's lifetime, even after an ingestion", async () => {
     const ats = fakeSource("ats");
     await ingest(ats, [rawJob({ externalId: "1" })], T0);
-    const base = await serve();
+    server = createApp(db).listen(0); // default 10-minute cache
+    await new Promise((r) => server!.once("listening", r));
+    const base = `http://127.0.0.1:${(server!.address() as AddressInfo).port}`;
     const openJobs = async () => ((await (await fetch(`${base}/api/stats`)).json()) as { totals: { openJobs: number } }).totals.openJobs;
     expect(await openJobs()).toBe(1);
 
-    // Written outside ingestion (no new source run): still the cached number.
-    db.prepare("UPDATE jobs SET closed_at = ? WHERE id = 'ats:1'").run(T0.toISOString());
-    expect(await openJobs()).toBe(1);
-
-    // A finished source run refreshes it.
+    // Even a finished ingestion doesn't recompute within the lifetime.
     await ingest(ats, [rawJob({ externalId: "1" }), rawJob({ externalId: "2", title: "Designer" })], hoursLater(2));
-    expect(await openJobs()).toBe(2);
+    expect(await openJobs()).toBe(1);
+  });
+
+  it("recomputes once the lifetime has passed", async () => {
+    let clock = 0;
+    const stats = cachedStats(db, 1000, () => clock);
+    expect(stats().totals.openJobs).toBe(0);
+    await ingest(fakeSource("ats"), [rawJob({ externalId: "1" })], T0);
+    clock = 999;
+    expect(stats().totals.openJobs).toBe(0);
+    clock = 1000;
+    expect(stats().totals.openJobs).toBe(1);
+  });
+});
+
+describe("compactOnce", () => {
+  it("compacts once after the move, only with enough free disk", async () => {
+    const os = await import("node:os");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "jr-compact-"));
+    const file = path.join(dir, "db.sqlite");
+    const fileDb = openDb(file);
+    try {
+      const logs: string[] = [];
+      const log = (m: string) => logs.push(m);
+      // Not before the move has finished.
+      expect(compactOnce(fileDb, file, { log, freeBytes: () => Number.MAX_SAFE_INTEGER })).toBe(false);
+      await moveDescriptions(fileDb, { pauseMs: 0, log: () => {} });
+
+      expect(compactOnce(fileDb, file, { log, freeBytes: () => 1 })).toBe(false);
+      expect(logs.at(-1)).toMatch(/not compacting: 0 MB free/);
+
+      expect(compactOnce(fileDb, file, { log, freeBytes: () => Number.MAX_SAFE_INTEGER })).toBe(true);
+      expect(logs.at(-1)).toMatch(/\[db\] compacted/);
+      // Only once.
+      expect(compactOnce(fileDb, file, { log, freeBytes: () => Number.MAX_SAFE_INTEGER })).toBe(false);
+    } finally {
+      fileDb.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
