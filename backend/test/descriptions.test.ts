@@ -144,6 +144,7 @@ describe("compactOnce", () => {
       expect(logs.at(-1)).toMatch(/not compacting: 0 MB free/);
 
       expect(compactOnce(fileDb, file, { log, freeBytes: () => Number.MAX_SAFE_INTEGER })).toBe(true);
+      expect(logs.slice(-2)[0]).toMatch(/\[db\] compacting/);
       expect(logs.at(-1)).toMatch(/\[db\] compacted/);
       // Only once.
       expect(compactOnce(fileDb, file, { log, freeBytes: () => Number.MAX_SAFE_INTEGER })).toBe(false);

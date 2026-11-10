@@ -54,8 +54,9 @@ if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `n
 // Don't run `npm run ingest` or the audit by hand until "[db] compacted" is logged:
 // a second connection's long reads would let the WAL grow during the move.
 moveDescriptions(db)
+  .catch((err: unknown) => console.error("[db] moving descriptions failed:", err))
   .then(() => compactOnce(db, config.dbPath))
-  .catch((err: unknown) => console.error("[db] moving descriptions failed:", err));
+  .catch((err: unknown) => console.error("[db] compacting failed:", err));
 
 function shutdown(): void {
   scheduler?.stop();

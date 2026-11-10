@@ -77,6 +77,8 @@ export function compactOnce(
 ): boolean {
   if (dbPath === ":memory:" || !descriptionsMoved(db)) return false;
   if (db.prepare("SELECT 1 FROM app_state WHERE key = ?").get(COMPACTED_KEY)) return false;
+  // A WAL left large (e.g. by a VACUUM killed mid-way) would eat the space it needs.
+  db.pragma("wal_checkpoint(TRUNCATE)");
   const size = fs.statSync(dbPath).size;
   const free = freeBytes(path.dirname(dbPath));
   // The rewrite goes through the WAL first: up to the database's size, plus a margin.
@@ -85,6 +87,7 @@ export function compactOnce(
     log(`[db] not compacting: ${mb(free)} free, needs ${mb(needed)}; will retry on the next start`);
     return false;
   }
+  log(`[db] compacting ${mb(size)} (the API pauses until it finishes)…`);
   const started = Date.now();
   db.exec("VACUUM");
   db.pragma("wal_checkpoint(TRUNCATE)");
