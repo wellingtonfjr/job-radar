@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import type { JobDetail, Stats } from '../api/types';
 import { rich, useI18n, type I18n } from '../i18n';
+import { jobProps, track } from '../lib/analytics';
 import { jobPath } from '../lib/router';
 import { CompanyLogo } from './CompanyLogo';
 import { Icon } from './Icon';
@@ -61,6 +63,12 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
   ];
   const TitleTag = variant === 'page' ? 'h1' : 'h2';
 
+  useEffect(() => {
+    track('job_viewed', { ...jobProps(job), view: variant, closed: job.closedAt !== null });
+    // Once per role shown, not on every re-render of the same role.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.id, variant]);
+
   return (
     <article className={`job-detail job-detail--${variant}`} aria-label={t.role.label(job.title, job.company)}>
       {variant === 'pane' && (
@@ -92,7 +100,13 @@ export function JobDetailView({ job, stats, variant, onClose }: JobDetailViewPro
 
       <div className="job-detail__apply">
         {!job.closedAt && (
-          <a className="button button--primary" href={job.applyUrl} target="_blank" rel="noopener noreferrer">
+          <a
+            className="button button--primary"
+            href={job.applyUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => track('apply_clicked', { ...jobProps(job), view: variant, apply_method: job.applyMethod })}
+          >
             {job.applyDirect ? t.role.applyEmployer : t.role.applyOn(job.sourceName)}
             <Icon name="external" size={16} />
           </a>

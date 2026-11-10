@@ -25,6 +25,10 @@ RUN npm --prefix backend ci && npm --prefix frontend ci
 # Then the code, and both builds.
 COPY backend/ backend/
 COPY frontend/ frontend/
+# Anonymous analytics (PostHog). Its project key is public by design: it can
+# only send events. Empty = analytics off. Set in fly.toml's [build.args].
+ARG VITE_POSTHOG_KEY=""
+ARG VITE_POSTHOG_HOST=""
 RUN npm --prefix frontend run build && npm --prefix backend run build
 
 # Keep only production dependencies (Express, better-sqlite3, …) for the

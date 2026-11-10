@@ -37,7 +37,8 @@ describe("security headers", () => {
     expect(csp["default-src"]).toEqual(["'self'"]);
     expect(csp["script-src"]).toEqual(["'self'"]);
     expect(csp["style-src"]).toEqual(["'self'"]);
-    expect(csp["connect-src"]).toEqual(["'self'"]);
+    // Our API, plus PostHog's ingestion hosts for the anonymous analytics.
+    expect(csp["connect-src"]).toEqual(["'self'", "https://us.i.posthog.com", "https://eu.i.posthog.com"]);
     expect(csp["img-src"]).toEqual(["'self'", "https:", "data:"]);
     expect(csp["frame-ancestors"]).toEqual(["'none'"]);
     expect(csp["object-src"]).toEqual(["'none'"]);

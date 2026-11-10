@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ApiError, reportClosed } from '../api/client';
 import { errorMessage, useI18n } from '../i18n';
+import { track } from '../lib/analytics';
 
 interface ReportClosedButtonProps {
   jobId: string;
@@ -18,6 +19,7 @@ export function ReportClosedButton({ jobId }: ReportClosedButtonProps) {
 
   const send = () => {
     setState({ status: 'sending' });
+    track('closed_reported', { job_id: jobId });
     reportClosed(jobId)
       .then(() => setState({ status: 'sent' }))
       .catch((err: unknown) => {

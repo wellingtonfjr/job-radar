@@ -19,6 +19,7 @@ export function SourcesFooter({ sources, openPrecision }: SourcesFooterProps) {
         <div className="footer__about">
           <p className="footer__brand">job-radar</p>
           <p>{t.footer.about}</p>
+          <p>{t.footer.analytics}</p>
           {openPrecision != null && <p className="footer__trust">{t.footer.precision(fmt.percent(openPrecision))}</p>}
         </div>
         {sources && (

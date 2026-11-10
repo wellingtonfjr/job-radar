@@ -159,6 +159,7 @@ export const en = {
   footer: {
     about:
       'Company career pages (Greenhouse, Lever, Ashby, SmartRecruiters, InHire, Workable and Recruitee boards) are scanned directly, so a role disappears as soon as the company takes it down. Public job boards fill the gaps and always link back to the original posting.',
+    analytics: 'We count visits and clicks anonymously (no cookies, no accounts, never what you type in search) to learn which filters and roles are useful.',
     sources: 'Sources',
     source: 'Source',
     type: 'Type',

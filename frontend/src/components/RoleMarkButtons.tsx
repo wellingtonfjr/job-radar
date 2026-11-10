@@ -1,5 +1,6 @@
 import { useRoleMarks } from '../hooks/useRoleMarks';
 import { useI18n } from '../i18n';
+import { track } from '../lib/analytics';
 import { toggleApplied, toggleSaved, type RoleSnapshot } from '../lib/savedRoles';
 import { Icon } from './Icon';
 
@@ -25,7 +26,10 @@ export function RoleMarkButtons({ role, variant }: RoleMarkButtonsProps) {
         aria-pressed={saved}
         aria-label={compact ? t.marks.saveRole(role.title) : undefined}
         title={compact ? (saved ? t.marks.saved : t.marks.save) : undefined}
-        onClick={() => toggleSaved(role)}
+        onClick={() => {
+          track('role_marked', { mark: 'saved', on: !saved, view: variant });
+          toggleSaved(role);
+        }}
       >
         <Icon name={saved ? 'star' : 'star-outline'} size={compact ? 18 : 16} />
         {!compact && t.marks.save}
@@ -36,7 +40,10 @@ export function RoleMarkButtons({ role, variant }: RoleMarkButtonsProps) {
         aria-pressed={applied}
         aria-label={compact ? t.marks.markRoleApplied(role.title) : undefined}
         title={compact ? (applied ? t.marks.applied : t.marks.markApplied) : undefined}
-        onClick={() => toggleApplied(role)}
+        onClick={() => {
+          track('role_marked', { mark: 'applied', on: !applied, view: variant });
+          toggleApplied(role);
+        }}
       >
         <Icon name="check" size={compact ? 18 : 16} />
         {!compact && t.marks.applied}
