@@ -175,7 +175,6 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
     // (`emit`), or below for adapters that return everything at once.
     let written = 0;
     const writeResult = (result: FeedResult): void => {
-      written += 1;
       const seen = new Map<string, NormalizedJob>();
       for (const raw of result.jobs) {
         try {
@@ -212,6 +211,8 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
           }
         }
       })();
+      // Counted only once committed: a board whose write failed isn't "read".
+      written += 1;
       summary.fetched += seen.size;
     };
 
@@ -221,7 +222,8 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       discoveredBoards: discovered,
       emit: writeResult,
     });
-    summary.errors.push(...outcome.errors);
+    // Fetch errors first, as before streaming: only the first 50 errors are stored.
+    summary.errors.unshift(...outcome.errors);
     for (const result of outcome.results) writeResult(result);
 
     // A discovered board the ATS no longer has is forgotten; discovery may find it again later.
