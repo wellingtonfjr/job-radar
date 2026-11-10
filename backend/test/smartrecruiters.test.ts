@@ -174,7 +174,11 @@ describe("SmartRecruiters adapter", () => {
     await runIngestion(db, [source], { staleAfterDays: 30, now: () => new Date("2026-10-28T13:00:00Z") });
 
     expect(detailCalls).toBe(1);
-    const row = db.prepare("SELECT feed, source_rank, description, closed_at FROM jobs WHERE id = 'smartrecruiters:1'").get();
+    const row = db
+      .prepare(
+        "SELECT j.feed, j.source_rank, d.description, j.closed_at FROM jobs j JOIN job_descriptions d ON d.job_id = j.id WHERE j.id = 'smartrecruiters:1'",
+      )
+      .get();
     expect(row).toEqual({ feed: "Acme", source_rank: 0, description: "Build APIs in Go.", closed_at: null });
   });
 });

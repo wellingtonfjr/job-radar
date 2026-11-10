@@ -319,8 +319,9 @@ export function createJobsRouter(db: Db, siteUrl = DEFAULT_SITE_URL): Router {
   router.get("/:id", (req, res) => {
     const row = db
       .prepare(
-        `SELECT ${LIST_COLUMNS}, j.description, j.closed_at, j.fingerprint, j.apply_method
-         FROM jobs j LEFT JOIN companies c ON c.company_key = j.company_key WHERE j.id = ?`,
+        `SELECT ${LIST_COLUMNS}, COALESCE(d.description, j.description) AS description, j.closed_at, j.fingerprint, j.apply_method
+         FROM jobs j LEFT JOIN companies c ON c.company_key = j.company_key
+         LEFT JOIN job_descriptions d ON d.job_id = j.id WHERE j.id = ?`,
       )
       .get(req.params.id) as (JobRow & { closed_at: string | null; fingerprint: string; apply_method: string | null }) | undefined;
     if (!row) {

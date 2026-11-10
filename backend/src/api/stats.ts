@@ -123,10 +123,22 @@ export function getStats(db: Db, now: Date) {
   };
 }
 
-export function createStatsRouter(db: Db): Router {
+/**
+ * The stats scan every open role, and every page asks for them, so they're
+ * computed at most once per `ttlMs`, and again as soon as a source run
+ * finishes (the data only changes much with ingestion).
+ */
+export function createStatsRouter(db: Db, { ttlMs = 10 * 60_000 }: { ttlMs?: number } = {}): Router {
   const router = Router();
+  const lastRun = db.prepare("SELECT MAX(id) AS id FROM source_runs WHERE finished_at IS NOT NULL");
+  let cached: { runId: number | null; at: number; body: ReturnType<typeof getStats> } | null = null;
   router.get("/", (_req, res) => {
-    res.json(getStats(db, new Date()));
+    const now = Date.now();
+    const runId = (lastRun.get() as { id: number | null }).id;
+    if (!cached || cached.runId !== runId || now - cached.at >= ttlMs) {
+      cached = { runId, at: now, body: getStats(db, new Date(now)) };
+    }
+    res.json(cached.body);
   });
   return router;
 }

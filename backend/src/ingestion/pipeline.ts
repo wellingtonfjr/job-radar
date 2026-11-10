@@ -109,7 +109,8 @@ function toRow(job: NormalizedJob, sourceRank: number, seenAt: string): Record<s
     salaryMinUsdYear: job.salaryMinUsdYear,
     skills: JSON.stringify(job.skills),
     tags: JSON.stringify(job.tags),
-    description: job.description,
+    // Kept in job_descriptions; see the schema.
+    description: null,
     descriptionLinks: JSON.stringify(job.descriptionLinks),
     searchText: toSearchKey([job.title, job.company, ...job.skills, ...job.tags].join(" ")),
     postedAt: job.postedAt,
@@ -161,10 +162,17 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
 
   const summary: SourceRunSummary = { source: source.id, status: "ok", fetched: 0, inserted: 0, closed: 0, errors: [] };
   try {
-    const storedDescription = db.prepare("SELECT description FROM jobs WHERE source = ? AND external_id = ?");
+    const storedDescription = db.prepare(
+      `SELECT COALESCE(d.description, j.description) AS description FROM jobs j
+       LEFT JOIN job_descriptions d ON d.job_id = j.id WHERE j.source = ? AND j.external_id = ?`,
+    );
     const discovered = source.feeds ? discoveredBoards(db, source.id, source.feeds) : [];
     const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");
     const upsert = db.prepare(UPSERT_SQL);
+    const putDescription = db.prepare(
+      "INSERT INTO job_descriptions (job_id, description) VALUES (?, ?) ON CONFLICT(job_id) DO UPDATE SET description = excluded.description",
+    );
+    const dropDescription = db.prepare("DELETE FROM job_descriptions WHERE job_id = ?");
     const openInFeed = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE source = ? AND feed = ? AND closed_at IS NULL");
     // Anything in a complete feed that this run didn't touch is gone upstream.
     const closeMissing = db.prepare(
@@ -196,6 +204,8 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
         for (const job of seen.values()) {
           if (!exists.get(job.id)) summary.inserted += 1;
           upsert.run(toRow(job, SOURCE_RANK[source.kind], startedAt));
+          if (job.description) putDescription.run(job.id, job.description);
+          else dropDescription.run(job.id);
         }
         if (result.complete) {
           // Guard against partial responses: a "complete" board that suddenly

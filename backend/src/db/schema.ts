@@ -169,6 +169,18 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
     WHERE provider IS NOT NULL
       AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_key = ats_boards.company_key AND j.apply_method = 'ats-discovery');
   `),
+
+  // Descriptions are most of the database's size. Kept inside `jobs`, every
+  // listing, count and stats query read them from disk (columns after a long
+  // description sit on its overflow pages), and the database outgrew the
+  // machine's memory. Here they're only read when one role is opened.
+  // `jobs.description` stays for old rows until moveDescriptions empties it.
+  (db) => db.exec(`
+    CREATE TABLE IF NOT EXISTS job_descriptions (
+      job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+      description TEXT NOT NULL
+    );
+  `),
 ];
 
 export function migrate(db: Database.Database): void {
