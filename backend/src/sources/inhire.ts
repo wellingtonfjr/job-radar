@@ -119,5 +119,5 @@ export const inhireSource: SourceAdapter = {
   // One detail request per remote/hybrid role: keep the cadence modest.
   minIntervalMinutes: 360,
   feeds: INHIRE_BOARDS.map((b) => b.token),
-  fetchJobs: (context) => fetchBoards(withDiscovered(INHIRE_BOARDS, context), fetchBoard),
+  fetchJobs: (context) => fetchBoards(withDiscovered(INHIRE_BOARDS, context), fetchBoard, context),
 };

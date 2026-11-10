@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../src/db/index.js";
 import { discoveredBoards, pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
+import { fetchBoards } from "../src/sources/boards.js";
 import type { CompanyBoard } from "../src/sources/companies.js";
 import type { FetchOutcome, SourceAdapter } from "../src/sources/types.js";
 import { fakeSource, rawJob } from "./helpers.js";
@@ -118,6 +119,69 @@ describe("runIngestion", () => {
     await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(4) });
     expect(given.map((b) => b.token)).toEqual(["globex"]);
     expect(openIds(db)).toEqual(["ats:acme", "ats:globex"]);
+  });
+
+  it("writes each board as it arrives instead of holding them all, with the same result", async () => {
+    // More boards than are fetched at once (4), so later ones start after earlier ones are written.
+    const boards: CompanyBoard[] = ["acme", "globex", "initech", "hooli", "umbrella", "soylent"].map((token) => ({ token, name: token }));
+    let failing = "";
+    // Counts how many boards the pipeline has written by the time each board is fetched.
+    const writtenWhenFetched: number[] = [];
+    const ats: SourceAdapter = {
+      ...fakeSource("ats"),
+      feeds: boards.map((b) => b.token),
+      fetchJobs: (context) =>
+        fetchBoards(
+          boards,
+          async (b) => {
+            writtenWhenFetched.push(openIds(db).length);
+            if (b.token === failing) throw new Error("responded 500");
+            return [rawJob({ externalId: b.token, company: b.name }), rawJob({ externalId: `${b.token}-2`, title: "Designer", company: b.name })];
+          },
+          context,
+        ),
+    };
+
+    const [first] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    expect(first).toMatchObject({ status: "ok", fetched: 12, inserted: 12, closed: 0 });
+    expect(openIds(db)).toHaveLength(12);
+    // The fifth board starts only once a slot frees up, and by then the board
+    // that freed it is already in the database.
+    expect(writtenWhenFetched[4]).toBeGreaterThanOrEqual(2);
+
+    // With emit, fetchBoards returns no results: the pipeline already has them.
+    const emitted: string[] = [];
+    const outcome = await fetchBoards(boards, async (b) => [rawJob({ externalId: b.token })], {
+      storedDescription: () => null,
+      emit: (r) => emitted.push(r.feed),
+    });
+    expect(outcome.results).toEqual([]);
+    expect(emitted.sort()).toEqual(["acme", "globex", "hooli", "initech", "soylent", "umbrella"]);
+
+    // A board failing mid-run keeps its jobs open; the others still close what's gone.
+    failing = "globex";
+    const [second] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(second).toMatchObject({ status: "partial", fetched: 10, closed: 0 });
+    expect(second?.errors).toEqual([{ feed: "globex", error: "responded 500" }]);
+    expect(openIds(db)).toHaveLength(12);
+  });
+
+  it("runs due sources one at a time, never two at once", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const slow = (id: string): SourceAdapter => ({
+      ...fakeSource(id),
+      fetchJobs: async () => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        await new Promise((r) => setTimeout(r, 5));
+        inFlight -= 1;
+        return { results: [{ feed: id, complete: true, jobs: [rawJob({ externalId: "1" })] }], errors: [] };
+      },
+    });
+    const summaries = await runIngestion(db, [slow("a"), slow("b"), slow("c")], { staleAfterDays: 30, now: () => T0 });
+    expect(summaries.map((s) => [s.source, s.status])).toEqual([["a", "ok"], ["b", "ok"], ["c", "ok"]]);
+    expect(maxInFlight).toBe(1);
   });
 
   it("closes jobs of a source removed from the registry, but only when told the registry", async () => {

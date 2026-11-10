@@ -6,7 +6,7 @@ import { companyKey, isOpening, normalizeJob } from "../normalize/index.js";
 import { toSearchKey } from "../normalize/text.js";
 import { errorMessage } from "../sources/http.js";
 import type { CompanyBoard } from "../sources/companies.js";
-import type { FeedError, SourceAdapter } from "../sources/types.js";
+import type { FeedError, FeedResult, SourceAdapter } from "../sources/types.js";
 
 export interface SourceRunSummary {
   source: string;
@@ -163,22 +163,6 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
   try {
     const storedDescription = db.prepare("SELECT description FROM jobs WHERE source = ? AND external_id = ?");
     const discovered = source.feeds ? discoveredBoards(db, source.id, source.feeds) : [];
-    const outcome = await source.fetchJobs({
-      storedDescription: (externalId) =>
-        (storedDescription.get(source.id, externalId) as { description: string | null } | undefined)?.description ?? null,
-      discoveredBoards: discovered,
-    });
-    summary.errors = outcome.errors;
-
-    // A discovered board the ATS no longer has is forgotten; discovery may find it again later.
-    const discoveredTokens = new Set(discovered.map((b) => b.token));
-    const forgetBoard = db.prepare(
-      "UPDATE ats_boards SET provider = NULL, token = NULL, matched_at = NULL, checked_at = ? WHERE provider = ? AND token = ?",
-    );
-    for (const error of outcome.errors) {
-      if (error.gone && discoveredTokens.has(error.feed)) forgetBoard.run(startedAt, source.id, error.feed);
-    }
-
     const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");
     const upsert = db.prepare(UPSERT_SQL);
     const openInFeed = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE source = ? AND feed = ? AND closed_at IS NULL");
@@ -187,7 +171,11 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       "UPDATE jobs SET closed_at = @now WHERE source = @source AND feed = @feed AND closed_at IS NULL AND last_seen_at < @seenAt",
     );
 
-    for (const result of outcome.results) {
+    // Writes one feed's jobs. Called by the adapter as each board arrives
+    // (`emit`), or below for adapters that return everything at once.
+    let written = 0;
+    const writeResult = (result: FeedResult): void => {
+      written += 1;
       const seen = new Map<string, NormalizedJob>();
       for (const raw of result.jobs) {
         try {
@@ -225,9 +213,27 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
         }
       })();
       summary.fetched += seen.size;
+    };
+
+    const outcome = await source.fetchJobs({
+      storedDescription: (externalId) =>
+        (storedDescription.get(source.id, externalId) as { description: string | null } | undefined)?.description ?? null,
+      discoveredBoards: discovered,
+      emit: writeResult,
+    });
+    summary.errors.push(...outcome.errors);
+    for (const result of outcome.results) writeResult(result);
+
+    // A discovered board the ATS no longer has is forgotten; discovery may find it again later.
+    const discoveredTokens = new Set(discovered.map((b) => b.token));
+    const forgetBoard = db.prepare(
+      "UPDATE ats_boards SET provider = NULL, token = NULL, matched_at = NULL, checked_at = ? WHERE provider = ? AND token = ?",
+    );
+    for (const error of outcome.errors) {
+      if (error.gone && discoveredTokens.has(error.feed)) forgetBoard.run(startedAt, source.id, error.feed);
     }
 
-    if (source.feeds && outcome.results.length > 0) {
+    if (source.feeds && written > 0) {
       const feeds = [...source.feeds, ...discoveredTokens];
       const placeholders = feeds.map(() => "?").join(", ") || "NULL";
       summary.closed += db
@@ -235,7 +241,7 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
         .run(startedAt, source.id, ...feeds).changes;
     }
 
-    if (summary.errors.length > 0) summary.status = outcome.results.length > 0 ? "partial" : "error";
+    if (summary.errors.length > 0) summary.status = written > 0 ? "partial" : "error";
   } catch (err) {
     summary.status = "error";
     summary.errors.push({ feed: "*", error: errorMessage(err) });
@@ -459,19 +465,21 @@ export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary
 }
 
 /**
- * Runs every due source (in parallel — they're different hosts), then the
- * post-processing that depends on the whole dataset.
+ * Runs every due source, one at a time, then the post-processing that
+ * depends on the whole dataset. One at a time on purpose: the app runs on a
+ * single 512 MB machine, and several large ATS runs at once (each holding
+ * the boards in flight, with full descriptions) ran it out of memory.
  */
 export async function runIngestion(db: Db, sources: SourceAdapter[], options: IngestionOptions): Promise<SourceRunSummary[]> {
   const now = options.now?.() ?? new Date();
-  const summaries = await Promise.all(
-    sources.map((source): Promise<SourceRunSummary> => {
-      if (!options.force && !isDue(db, source, now, options.minIntervalMinutes)) {
-        return Promise.resolve({ source: source.id, status: "skipped", fetched: 0, inserted: 0, closed: 0, errors: [] });
-      }
-      return ingestSource(db, source, now);
-    }),
-  );
+  const summaries: SourceRunSummary[] = [];
+  for (const source of sources) {
+    if (!options.force && !isDue(db, source, now, options.minIntervalMinutes)) {
+      summaries.push({ source: source.id, status: "skipped", fetched: 0, inserted: 0, closed: 0, errors: [] });
+      continue;
+    }
+    summaries.push(await ingestSource(db, source, now));
+  }
   if (summaries.some((s) => s.status !== "skipped")) {
     if (options.knownSources) retireRemovedSources(db, now, options.knownSources);
     retireStaleJobs(db, now, options.staleAfterDays);

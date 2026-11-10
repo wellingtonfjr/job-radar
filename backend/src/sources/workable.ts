@@ -73,5 +73,5 @@ export const workableSource: SourceAdapter = {
   homepage: "https://www.workable.com",
   minIntervalMinutes: 60,
   feeds: WORKABLE_BOARDS.map((b) => b.token),
-  fetchJobs: (context) => fetchBoards(withDiscovered(WORKABLE_BOARDS, context), fetchBoard),
+  fetchJobs: (context) => fetchBoards(withDiscovered(WORKABLE_BOARDS, context), fetchBoard, context),
 };
