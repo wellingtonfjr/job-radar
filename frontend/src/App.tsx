@@ -98,7 +98,7 @@ export default function App() {
           </StatusMessage>
         </main>
       )}
-      <SourcesFooter sources={stats?.sources} openPrecision={accuracy?.summary.openPrecision} />
+      <SourcesFooter openPrecision={accuracy?.summary.openPrecision} />
     </>
   );
 }
