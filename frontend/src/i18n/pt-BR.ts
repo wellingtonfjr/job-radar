@@ -155,15 +155,8 @@ export const ptBR: Messages = {
   },
   footer: {
     about:
-      'As páginas de carreira das empresas (Greenhouse, Lever, Ashby, SmartRecruiters, InHire, Workable e Recruitee) são varridas diretamente, então uma vaga some assim que a empresa a tira do ar. Sites de vagas públicos cobrem o resto e sempre apontam para o anúncio original.',
+      'As vagas vêm direto das páginas de carreira das empresas e são verificadas de novo, então uma vaga some assim que a empresa a tira do ar. Sites de vagas públicos cobrem o resto e sempre apontam para o anúncio original.',
     analytics: 'Contamos visitas e cliques de forma anônima (sem cookies, sem contas e nunca o que você digita na busca) para saber quais filtros e vagas são úteis.',
-    sources: 'Fontes',
-    source: 'Fonte',
-    type: 'Tipo',
-    open: 'Abertas',
-    lastScan: 'Última varredura',
-    kind: { ats: 'ATS da empresa', aggregator: 'Site de vagas' },
-    never: 'nunca',
     precision: (percent: string) => `${percent} das vagas da amostra confirmadas abertas na última semana`,
   },
   errors: {
