@@ -1,4 +1,5 @@
 import type { RawJob } from "../domain/job.js";
+import type { CompanyBoard } from "./companies.js";
 
 /**
  * A feed is the unit a source is fetched in: one company board for ATS
@@ -23,6 +24,8 @@ export interface FeedResult {
 export interface FeedError {
   feed: string;
   error: string;
+  /** The provider said the feed doesn't exist (404/410), not a transient failure. */
+  gone?: boolean;
 }
 
 export interface FetchOutcome {
@@ -34,6 +37,11 @@ export interface FetchOutcome {
 export interface FetchContext {
   /** The description stored for this source's posting, or null if none yet. */
   storedDescription(externalId: string): string | null;
+  /**
+   * Company boards on this ATS found by apply-link discovery, beyond the
+   * curated list (see `discoveredBoards` in ingestion/pipeline.ts).
+   */
+  discoveredBoards?: readonly CompanyBoard[];
 }
 
 export type SourceKind = "ats" | "aggregator";

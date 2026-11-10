@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../src/db/index.js";
-import { pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
+import { discoveredBoards, pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
+import type { CompanyBoard } from "../src/sources/companies.js";
+import type { FetchOutcome, SourceAdapter } from "../src/sources/types.js";
 import { fakeSource, rawJob } from "./helpers.js";
 
 const T0 = new Date("2026-10-15T12:00:00Z");
@@ -68,6 +70,54 @@ describe("runIngestion", () => {
     const [summary] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
     expect(summary?.closed).toBe(1);
     expect(openIds(db)).toEqual(["ats:1"]);
+  });
+
+  it("reads discovered boards that matched a listing, keeps them open, and forgets boards that are gone", async () => {
+    const board = db.prepare("INSERT INTO ats_boards (company_key, provider, token, checked_at, company_name, matched_at) VALUES (?, ?, ?, ?, ?, ?)");
+    board.run("globex", "ats", "globex", T0.toISOString(), "Globex", T0.toISOString());
+    board.run("initech", "ats", "initech", T0.toISOString(), "Initech", hoursLater(1).toISOString());
+    board.run("hooli", "ats", "hooli", T0.toISOString(), null, null); // found, but never matched a listing
+    board.run("acme", "ats", "acme", T0.toISOString(), "Acme", T0.toISOString()); // already curated
+    expect(discoveredBoards(db, "ats", ["acme"])).toEqual([
+      { token: "globex", name: "Globex" },
+      { token: "initech", name: "Initech" },
+    ]);
+
+    let given: readonly CompanyBoard[] = [];
+    let respond = (boards: readonly CompanyBoard[]): FetchOutcome => ({
+      results: boards.map((b) => ({ feed: b.token, complete: true, jobs: [rawJob({ externalId: b.token, company: b.name })] })),
+      errors: [],
+    });
+    const ats: SourceAdapter = {
+      ...fakeSource("ats"),
+      feeds: ["acme"],
+      fetchJobs: async (context) => {
+        given = context?.discoveredBoards ?? [];
+        return respond([{ token: "acme", name: "Acme" }, ...given]);
+      },
+    };
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    expect(given.map((b) => b.token)).toEqual(["globex", "initech"]);
+    expect(openIds(db)).toEqual(["ats:acme", "ats:globex", "ats:initech"]);
+    expect(db.prepare("SELECT company FROM jobs WHERE id = 'ats:globex'").get()).toEqual({ company: "Globex" });
+
+    // Initech's board is deleted upstream: its board is forgotten, its open jobs stay until the next good read.
+    respond = (boards) => ({
+      results: boards.filter((b) => b.token !== "initech").map((b) => ({ feed: b.token, complete: true, jobs: [rawJob({ externalId: b.token, company: b.name })] })),
+      errors: [{ feed: "initech", error: "responded 404", gone: true }],
+    });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(openIds(db)).toEqual(["ats:acme", "ats:globex", "ats:initech"]);
+    expect(db.prepare("SELECT provider, token, matched_at FROM ats_boards WHERE company_key = 'initech'").get()).toEqual({
+      provider: null,
+      token: null,
+      matched_at: null,
+    });
+
+    // The next run no longer lists Initech, so its jobs close with the feed.
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(4) });
+    expect(given.map((b) => b.token)).toEqual(["globex"]);
+    expect(openIds(db)).toEqual(["ats:acme", "ats:globex"]);
   });
 
   it("closes jobs of a source removed from the registry, but only when told the registry", async () => {

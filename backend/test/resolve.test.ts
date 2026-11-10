@@ -117,6 +117,12 @@ describe("resolveApplyLinks", () => {
     expect(applyRow("himalayas:3")).toEqual({ apply_url: "https://jobs.ashbyhq.com/globex/abc", apply_method: "ats-discovery" });
     expect(applyRow("himalayas:4")).toEqual({ apply_url: null, apply_method: null });
     expect(db.prepare("SELECT provider, token FROM ats_boards WHERE company_key = 'globex'").get()).toEqual({ provider: "ashby", token: "globex" });
+    // The match marks Globex's board for full ingestion; Hooli has no board to mark.
+    expect(db.prepare("SELECT company_name, matched_at FROM ats_boards WHERE company_key = 'globex'").get()).toEqual({
+      company_name: "Globex",
+      matched_at: NOW.toISOString(),
+    });
+    expect(db.prepare("SELECT matched_at FROM ats_boards WHERE company_key = 'hooli'").get()).toEqual({ matched_at: null });
   });
 
   it("prefers an ingested ATS copy and never uses links that no longer load", async () => {

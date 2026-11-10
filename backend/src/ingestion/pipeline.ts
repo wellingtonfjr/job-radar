@@ -5,6 +5,7 @@ import type { NormalizedJob } from "../domain/job.js";
 import { companyKey, isOpening, normalizeJob } from "../normalize/index.js";
 import { toSearchKey } from "../normalize/text.js";
 import { errorMessage } from "../sources/http.js";
+import type { CompanyBoard } from "../sources/companies.js";
 import type { FeedError, SourceAdapter } from "../sources/types.js";
 
 export interface SourceRunSummary {
@@ -119,6 +120,28 @@ function toRow(job: NormalizedJob, sourceRank: number, seenAt: string): Record<s
   };
 }
 
+/** Most discovered boards read per ATS in one run, on top of the curated ones. */
+export const MAX_DISCOVERED_BOARDS = 100;
+
+/**
+ * Company boards on `provider` found by apply-link discovery
+ * (resolve/atsDiscovery.ts), minus the curated ones. A board only counts
+ * once a job-board listing was matched to one of its postings: that rules
+ * out a token that happens to belong to another company. The oldest matches
+ * come first, so a board keeps its slot from run to run.
+ */
+export function discoveredBoards(db: Db, provider: string, curated: readonly string[] = []): CompanyBoard[] {
+  const skip = new Set(curated);
+  const rows = db
+    .prepare(
+      `SELECT token, company_name AS name FROM ats_boards
+       WHERE provider = ? AND token IS NOT NULL AND matched_at IS NOT NULL AND company_name IS NOT NULL
+       GROUP BY token ORDER BY MIN(matched_at), token`,
+    )
+    .all(provider) as CompanyBoard[];
+  return rows.filter((b) => !skip.has(b.token)).slice(0, MAX_DISCOVERED_BOARDS);
+}
+
 function isDue(db: Db, source: SourceAdapter, now: Date, floorMinutes = 0): boolean {
   // Failed runs don't count, and neither do runs that never finished (the
   // process stopped mid-run, e.g. for a deploy): both are retried right away.
@@ -139,11 +162,22 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
   const summary: SourceRunSummary = { source: source.id, status: "ok", fetched: 0, inserted: 0, closed: 0, errors: [] };
   try {
     const storedDescription = db.prepare("SELECT description FROM jobs WHERE source = ? AND external_id = ?");
+    const discovered = source.feeds ? discoveredBoards(db, source.id, source.feeds) : [];
     const outcome = await source.fetchJobs({
       storedDescription: (externalId) =>
         (storedDescription.get(source.id, externalId) as { description: string | null } | undefined)?.description ?? null,
+      discoveredBoards: discovered,
     });
     summary.errors = outcome.errors;
+
+    // A discovered board the ATS no longer has is forgotten; discovery may find it again later.
+    const discoveredTokens = new Set(discovered.map((b) => b.token));
+    const forgetBoard = db.prepare(
+      "UPDATE ats_boards SET provider = NULL, token = NULL, matched_at = NULL, checked_at = ? WHERE provider = ? AND token = ?",
+    );
+    for (const error of outcome.errors) {
+      if (error.gone && discoveredTokens.has(error.feed)) forgetBoard.run(startedAt, source.id, error.feed);
+    }
 
     const exists = db.prepare("SELECT 1 FROM jobs WHERE id = ?");
     const upsert = db.prepare(UPSERT_SQL);
@@ -194,10 +228,11 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
     }
 
     if (source.feeds && outcome.results.length > 0) {
-      const placeholders = source.feeds.map(() => "?").join(", ") || "NULL";
+      const feeds = [...source.feeds, ...discoveredTokens];
+      const placeholders = feeds.map(() => "?").join(", ") || "NULL";
       summary.closed += db
         .prepare(`UPDATE jobs SET closed_at = ? WHERE source = ? AND closed_at IS NULL AND feed NOT IN (${placeholders})`)
-        .run(startedAt, source.id, ...source.feeds).changes;
+        .run(startedAt, source.id, ...feeds).changes;
     }
 
     if (summary.errors.length > 0) summary.status = outcome.results.length > 0 ? "partial" : "error";

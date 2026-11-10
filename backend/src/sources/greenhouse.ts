@@ -1,6 +1,6 @@
 import type { RawJob } from "../domain/job.js";
 import { splitLocations } from "../normalize/location.js";
-import { fetchBoards } from "./boards.js";
+import { fetchBoards, withDiscovered } from "./boards.js";
 import { GREENHOUSE_BOARDS, type CompanyBoard } from "./companies.js";
 import { getJson } from "./http.js";
 import type { SourceAdapter } from "./types.js";
@@ -47,5 +47,5 @@ export const greenhouseSource: SourceAdapter = {
   homepage: "https://www.greenhouse.com",
   minIntervalMinutes: 60,
   feeds: GREENHOUSE_BOARDS.map((b) => b.token),
-  fetchJobs: () => fetchBoards(GREENHOUSE_BOARDS, fetchBoard),
+  fetchJobs: (context) => fetchBoards(withDiscovered(GREENHOUSE_BOARDS, context), fetchBoard),
 };

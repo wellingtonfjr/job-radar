@@ -1,6 +1,6 @@
 import type { RawJob, Workplace } from "../domain/job.js";
 import { splitLocations } from "../normalize/location.js";
-import { fetchBoards } from "./boards.js";
+import { fetchBoards, withDiscovered } from "./boards.js";
 import { INHIRE_BOARDS, type CompanyBoard } from "./companies.js";
 import { getJson, mapLimit } from "./http.js";
 import type { SourceAdapter } from "./types.js";
@@ -119,5 +119,5 @@ export const inhireSource: SourceAdapter = {
   // One detail request per remote/hybrid role: keep the cadence modest.
   minIntervalMinutes: 360,
   feeds: INHIRE_BOARDS.map((b) => b.token),
-  fetchJobs: () => fetchBoards(INHIRE_BOARDS, fetchBoard),
+  fetchJobs: (context) => fetchBoards(withDiscovered(INHIRE_BOARDS, context), fetchBoard),
 };

@@ -1,6 +1,6 @@
 import type { RawJob, Salary, Workplace } from "../domain/job.js";
 import { normalizePeriod } from "../normalize/salary.js";
-import { fetchBoards } from "./boards.js";
+import { fetchBoards, withDiscovered } from "./boards.js";
 import { ASHBY_BOARDS, type CompanyBoard } from "./companies.js";
 import { getJson } from "./http.js";
 import type { SourceAdapter } from "./types.js";
@@ -79,5 +79,5 @@ export const ashbySource: SourceAdapter = {
   homepage: "https://www.ashbyhq.com",
   minIntervalMinutes: 60,
   feeds: ASHBY_BOARDS.map((b) => b.token),
-  fetchJobs: () => fetchBoards(ASHBY_BOARDS, fetchBoard),
+  fetchJobs: (context) => fetchBoards(withDiscovered(ASHBY_BOARDS, context), fetchBoard),
 };
