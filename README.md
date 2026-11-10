@@ -259,6 +259,23 @@ GitHub e-mail. GitHub runs scheduled workflows on a best-effort basis, so very
 short outages can go unnoticed; an external monitor (UptimeRobot, Better Stack)
 on `/health` is the upgrade if minute-level alerts matter.
 
+### Product analytics
+
+Anonymous usage analytics go to [PostHog](https://posthog.com) (cloud, free
+tier), from [`analytics.ts`](frontend/src/lib/analytics.ts). They're off unless
+the build sets `VITE_POSTHOG_KEY` (`[build.args]` in `fly.toml`; the project
+key is public by design, it can only send events), and never on in dev or tests.
+
+- **Cookieless:** nothing is stored in the browser. PostHog counts unique
+  visitors with a daily server-side hash, which needs *Cookieless server hash
+  mode* turned on in the project settings, or events are dropped.
+- **Only these events:** `$pageview` (one per route), `jobs_searched` (the
+  filters used, the length of the search text and the result count, once per
+  search), `job_viewed`, `apply_clicked`, `role_marked` and `closed_reported`.
+  No autocapture, session replay, surveys or external scripts.
+- **Never the search text:** `q` is stripped from every URL before sending.
+- Do Not Track is respected. The CSP allows only PostHog's ingestion hosts.
+
 ### Accuracy audit
 
 Every `ACCURACY_AUDIT_DAYS` (default 7; `0` disables) the scheduler re-checks,

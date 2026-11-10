@@ -49,6 +49,9 @@ export interface AppOptions {
 /** A role page's path; the id is URL-encoded (see frontend/src/lib/router.ts). */
 const JOB_PAGE = /^\/jobs\/([^/]+)$/;
 
+/** PostHog's ingestion hosts (US and EU cloud); see frontend/src/lib/analytics.ts. */
+const ANALYTICS_HOSTS = ["https://us.i.posthog.com", "https://eu.i.posthog.com"];
+
 const NO_CHECKS: ReportQueue = { enqueue: () => {}, idle: () => Promise.resolve() };
 
 export function createApp(
@@ -69,7 +72,9 @@ export function createApp(
   // Security headers on every response (pages, files and API). The CSP only
   // allows our own scripts, styles and API; company logos come from the job
   // sources' CDNs, so images may load from any HTTPS origin (images can't
-  // run code). Helmet's other defaults (HSTS, nosniff, …) stay on.
+  // run code). The frontend's anonymous analytics only send events to
+  // PostHog's ingestion host (no scripts are loaded from it). Helmet's other
+  // defaults (HSTS, nosniff, …) stay on.
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -78,7 +83,7 @@ export function createApp(
           scriptSrc: ["'self'"],
           styleSrc: ["'self'"],
           imgSrc: ["'self'", "https:", "data:"],
-          connectSrc: ["'self'"],
+          connectSrc: ["'self'", ...ANALYTICS_HOSTS],
           frameAncestors: ["'none'"],
           objectSrc: ["'none'"],
           baseUri: ["'self'"],

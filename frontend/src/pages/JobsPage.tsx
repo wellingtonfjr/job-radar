@@ -11,6 +11,7 @@ import { StatusMessage } from '../components/StatusMessage';
 import { useJobs } from '../hooks/useJobs';
 import { SPLIT_VIEW_QUERY, useMediaQuery } from '../hooks/useMediaQuery';
 import { errorMessage, useI18n } from '../i18n';
+import { searchProps, track } from '../lib/analytics';
 import { countActiveFilters, EMPTY_FILTERS, listUrl, parseFilters, serializeFilters, type Filters } from '../lib/filters';
 import { navigate } from '../lib/router';
 
@@ -44,6 +45,17 @@ export function JobsPage({ search, stats, lastVisit }: JobsPageProps) {
     // Only on mount: restoring later would fight the user's scrolling.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // One event per distinct search once its results arrive, so it carries the
+  // result count (zero-result searches are the interesting ones).
+  // A listing restored on the way back from a role isn't a new search.
+  const ready = listing.status === 'ready' && !listing.restored;
+  const total = listing.status === 'ready' ? listing.total : 0;
+  useEffect(() => {
+    if (ready) track('jobs_searched', searchProps(filters, total));
+    // Only when a new search finishes loading, not on "load more".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, ready]);
 
   useEffect(() => {
     document.title = t.results.pageTitle;

@@ -7,6 +7,7 @@ import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useAccuracy } from './hooks/useAccuracy';
 import { useStats } from './hooks/useStats';
 import { useI18n } from './i18n';
+import { trackPageview } from './lib/analytics';
 import { listUrl, parseFilters } from './lib/filters';
 import { takeLastVisit } from './lib/lastVisit';
 import { matchRoute, navigate, useLocation } from './lib/router';
@@ -53,6 +54,12 @@ export default function App() {
     const filters = route.name === 'jobs' ? parseFilters(search) : parseFilters('');
     navigate(listUrl({ ...filters, q: searchInput }), { replace: route.name === 'jobs' });
   };
+
+  // One pageview per route change; filter and search changes on the list
+  // are tracked as `jobs_searched` instead.
+  useEffect(() => {
+    trackPageview(matchRoute(pathname).name);
+  }, [pathname]);
 
   useEffect(() => {
     document.documentElement.lang = locale;
