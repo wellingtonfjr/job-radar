@@ -144,7 +144,7 @@ describe("GET /api/stats", () => {
     expect(body.totals).toMatchObject({ openJobs: 6, companies: 3, remote: 5, withSalary: 1, newLast7Days: 3 });
     expect(body.categories.find((c: any) => c.id === "design")).toMatchObject({ count: 1 });
     expect(body.countries).toEqual(expect.arrayContaining(["BR", "DE", "US"]));
-    expect(body.sources.find((s: any) => s.id === "greenhouse")).toMatchObject({ openJobs: 5, lastRun: { status: "ok", fetched: 5 } });
+    expect(body.sources.find((s: any) => s.id === "greenhouse")).toMatchObject({ openJobs: 4, lastRun: { status: "ok", fetched: 4 } });
   });
 });
 
@@ -158,9 +158,9 @@ describe("postings older than the listing age", () => {
     expect(await (await fetch(`${base}/sitemap.xml`)).text()).not.toContain("greenhouse%3A5");
   });
 
-  it("stay open: reachable by id and through the source filter", async () => {
-    expect((await get("/api/jobs/greenhouse%3A5")).body).toMatchObject({ id: "greenhouse:5", closedAt: null });
+  it("aren't stored at all", async () => {
+    expect((await get("/api/jobs/greenhouse%3A5")).status).toBe(404);
     const bySource = await get("/api/jobs?source=greenhouse&pageSize=50");
-    expect(bySource.body.jobs.map((j: any) => j.id)).toContain("greenhouse:5");
+    expect(bySource.body.jobs.map((j: any) => j.id)).not.toContain("greenhouse:5");
   });
 });

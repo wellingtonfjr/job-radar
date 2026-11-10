@@ -5,7 +5,7 @@ import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
 import type { SourceAdapter } from "../sources/types.js";
-import { pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
+import { MAX_LISTING_AGE_DAYS, pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
 
 export interface Scheduler {
   stop(): void;
@@ -26,7 +26,9 @@ export function logResolve(summary: ResolveSummary): void {
 
 export function logPrune(summary: PruneSummary, afterDays: number): void {
   if (afterDays <= 0) return;
-  console.log(`[ingest] pruned (older than ${afterDays}d): closed jobs=${summary.jobs} source runs=${summary.sourceRuns} reports=${summary.reports}`);
+  console.log(
+    `[ingest] pruned: postings over ${MAX_LISTING_AGE_DAYS}d old=${summary.oldPostings} · older than ${afterDays}d: closed jobs=${summary.jobs} source runs=${summary.sourceRuns} reports=${summary.reports}`,
+  );
 }
 
 function logSummaries(summaries: SourceRunSummary[]): void {

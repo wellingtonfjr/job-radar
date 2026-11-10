@@ -182,8 +182,11 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
     // Writes one feed's jobs. Called by the adapter as each board arrives
     // (`emit`), or below for adapters that return everything at once.
     let written = 0;
+    // Postings published longer ago than the listing shows aren't stored at all.
+    const postedBefore = now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000;
     const writeResult = (result: FeedResult): void => {
       const seen = new Map<string, NormalizedJob>();
+      let tooOld = 0;
       for (const raw of result.jobs) {
         try {
           const job = normalizeJob(source.id, result.feed, raw);
@@ -191,6 +194,10 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
             // Not a web address (or a script/data URL): never stored, but
             // reported so a source sending bad links doesn't go unnoticed.
             summary.errors.push({ feed: result.feed, error: `rejected unsafe or invalid URL for ${raw.externalId}` });
+            continue;
+          }
+          if (job.postedAt && Date.parse(job.postedAt) < postedBefore) {
+            tooOld += 1;
             continue;
           }
           // Résumé pools are skipped (and closed, if stored before).
@@ -213,7 +220,7 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
           // glitch than mass hiring, so nothing is closed this run. Jobs the
           // adapter filtered out on purpose still count as listed.
           const open = (openInFeed.get(source.id, result.feed) as { n: number }).n;
-          const listed = seen.size + (result.skipped ?? 0);
+          const listed = seen.size + (result.skipped ?? 0) + tooOld;
           if (open >= MIN_FEED_FOR_DROP_GUARD && listed < open * DROP_GUARD_RATIO) {
             summary.errors.push({ feed: result.feed, error: `listed ${listed} of ${open} open jobs; not closing any this run` });
           } else {
@@ -355,11 +362,11 @@ export const MAX_LISTING_AGE_DAYS = 60;
  *   employer's own ATS beats aggregators). Same-source matches are left
  *   alone — one company posting "Account Executive" in five cities is five
  *   real openings.
- * - Postings older than MAX_LISTING_AGE_DAYS (by `posted_at`, else when we
- *   first saw them) are hidden, from every source. They stay open (their
- *   page works by link, and the `source` filter still shows them) and still
- *   hide their job-board copies, so the same posting doesn't resurface
- *   through a board with a newer date.
+ * - Postings older than MAX_LISTING_AGE_DAYS are hidden, from every source.
+ *   Dated ones aren't stored at all past that age (see ingestSource and
+ *   pruneOldRows); this mostly hides undated roles, by when we first saw
+ *   them. Those stay open (their page works by link, and the `source`
+ *   filter still shows them) and still hide their job-board copies.
  * - Roles with enough recent "Role closed?" reports are hidden pending
  *   review (see accuracy/reports.ts). Like old postings they stay open,
  *   so they still hide their copies: a report hides the opening, not just
@@ -434,6 +441,8 @@ export function recomputeCompanyTiers(db: Db): void {
 
 export interface PruneSummary {
   jobs: number;
+  /** Roles published more than MAX_LISTING_AGE_DAYS ago, open or not. */
+  oldPostings: number;
   sourceRuns: number;
   reports: number;
 }
@@ -450,14 +459,21 @@ export interface PruneSummary {
  * too, so /api/stats always has a "last run" to show. "Role closed?" reports
  * only count for a week, so old ones go too (with their role, or not).
  *
- * No VACUUM: SQLite reuses the freed pages for new rows, so the file stops
- * growing instead of shrinking, and a VACUUM would rewrite the whole database
- * (needing as much free disk again) while blocking the API.
+ * Roles published more than MAX_LISTING_AGE_DAYS ago are deleted, open or
+ * not: the listing never shows them and ingestion no longer stores them
+ * (one still on its board this long is rarely a live opening). Roles without
+ * a publication date are left alone: deleting them by first-seen date would
+ * bring them back as "new" at the next run.
+ *
+ * No VACUUM here: SQLite reuses the freed pages for new rows, so the file
+ * stops growing instead of shrinking (see compactOnce for the one-off).
  */
 export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary {
-  if (afterDays <= 0) return { jobs: 0, sourceRuns: 0, reports: 0 };
+  if (afterDays <= 0) return { jobs: 0, oldPostings: 0, sourceRuns: 0, reports: 0 };
   const before = new Date(now.getTime() - afterDays * 86_400_000).toISOString();
+  const postedBefore = new Date(now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000).toISOString();
   return db.transaction(() => ({
+    oldPostings: db.prepare("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < ?").run(postedBefore).changes,
     jobs: db
       .prepare(
         `DELETE FROM jobs
