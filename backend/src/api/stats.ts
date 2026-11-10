@@ -123,10 +123,25 @@ export function getStats(db: Db, now: Date) {
   };
 }
 
+/**
+ * The stats scan every open role and every page asks for them, so they're
+ * computed at most once per `ttlMs`. Not on every source run: an ingestion
+ * finishes a dozen runs in a row, and each recompute blocks the process.
+ */
+export function cachedStats(db: Db, ttlMs = 10 * 60_000, clock: () => number = Date.now): () => ReturnType<typeof getStats> {
+  let cached: { at: number; body: ReturnType<typeof getStats> } | null = null;
+  return () => {
+    const now = clock();
+    if (!cached || now - cached.at >= ttlMs) cached = { at: now, body: getStats(db, new Date(now)) };
+    return cached.body;
+  };
+}
+
 export function createStatsRouter(db: Db): Router {
   const router = Router();
+  const stats = cachedStats(db);
   router.get("/", (_req, res) => {
-    res.json(getStats(db, new Date()));
+    res.json(stats());
   });
   return router;
 }

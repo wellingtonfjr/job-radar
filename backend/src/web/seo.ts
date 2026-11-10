@@ -72,7 +72,10 @@ interface JobMeta {
 /** An open role's fields for its link preview; undefined if unknown or closed. */
 export function findOpenJob(db: Db, id: string): JobMeta | undefined {
   return db
-    .prepare("SELECT id, title, company, locations, description FROM jobs WHERE id = ? AND closed_at IS NULL")
+    .prepare(
+      `SELECT j.id, j.title, j.company, j.locations, COALESCE(d.description, j.description) AS description
+       FROM jobs j LEFT JOIN job_descriptions d ON d.job_id = j.id WHERE j.id = ? AND j.closed_at IS NULL`,
+    )
     .get(id) as JobMeta | undefined;
 }
 
