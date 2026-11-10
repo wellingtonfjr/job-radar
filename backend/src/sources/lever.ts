@@ -70,5 +70,5 @@ export const leverSource: SourceAdapter = {
   homepage: "https://www.lever.co",
   minIntervalMinutes: 60,
   feeds: LEVER_BOARDS.map((b) => b.token),
-  fetchJobs: (context) => fetchBoards(withDiscovered(LEVER_BOARDS, context), fetchBoard),
+  fetchJobs: (context) => fetchBoards(withDiscovered(LEVER_BOARDS, context), fetchBoard, context),
 };

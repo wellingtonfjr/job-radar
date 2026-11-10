@@ -42,6 +42,12 @@ export interface FetchContext {
    * curated list (see `discoveredBoards` in ingestion/pipeline.ts).
    */
   discoveredBoards?: readonly CompanyBoard[];
+  /**
+   * When set, board adapters hand each board's result here as soon as it
+   * arrives instead of returning it in `results`, so a run never holds every
+   * board (with full descriptions) in memory at once.
+   */
+  emit?(result: FeedResult): void;
 }
 
 export type SourceKind = "ats" | "aggregator";

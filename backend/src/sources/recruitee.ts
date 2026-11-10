@@ -93,5 +93,5 @@ export const recruiteeSource: SourceAdapter = {
   homepage: "https://recruitee.com",
   minIntervalMinutes: 60,
   feeds: RECRUITEE_BOARDS.map((b) => b.token),
-  fetchJobs: (context) => fetchBoards(withDiscovered(RECRUITEE_BOARDS, context), fetchBoard),
+  fetchJobs: (context) => fetchBoards(withDiscovered(RECRUITEE_BOARDS, context), fetchBoard, context),
 };
