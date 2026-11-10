@@ -353,6 +353,16 @@ describe("runIngestion", () => {
       { id: "agg:fresh", canonical: 1, closed_at: null },
       { id: "ats:new", canonical: 1, closed_at: null },
     ]);
+    // Only the employer's listing is remembered, not the board's own aged roles.
+    expect(db.prepare("SELECT COUNT(*) AS n FROM aged_fingerprints").get()).toEqual({ n: 1 });
+
+    // Once the employer stops listing it (no refresh for over a week), the board copy shows again.
+    agg.respond({
+      results: [{ feed: "all", complete: true, jobs: [rawJob({ externalId: "copy", title: "Forward Deployed Engineer", postedAt: daysBefore(2) })] }],
+      errors: [],
+    });
+    await runIngestion(db, [agg], { staleAfterDays: 30, now: () => new Date(T0.getTime() + 8 * 86_400_000) });
+    expect(db.prepare("SELECT canonical FROM jobs WHERE id = 'agg:copy'").get()).toEqual({ canonical: 1 });
   });
 
   it("deletes stored roles once they age past the listing age, without counting them as closed or tripping the drop guard", async () => {

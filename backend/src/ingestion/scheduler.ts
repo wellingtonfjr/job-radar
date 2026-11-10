@@ -5,7 +5,7 @@ import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
 import type { SourceAdapter } from "../sources/types.js";
-import { deleteAgedPostings, MAX_LISTING_AGE_DAYS, pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
+import { deleteAgedPostings, MAX_LISTING_AGE_DAYS, pruneOldRows, recomputeCanonical, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
 
 export interface Scheduler {
   stop(): void;
@@ -100,7 +100,12 @@ export function startScheduler(
         return summaries;
       })
       .then(async (summaries) => {
-        if (summaries.some((s) => s.status !== "skipped")) logAged(await deleteAgedPostings(db, new Date()));
+        if (summaries.some((s) => s.status !== "skipped")) {
+          const deleted = await deleteAgedPostings(db, new Date());
+          logAged(deleted);
+          // Copies of the deleted roles: hide them now, not at the next run.
+          if (deleted > 0) recomputeCanonical(db, new Date());
+        }
         return summaries;
       })
       // Then point board listings at the employers' own postings.

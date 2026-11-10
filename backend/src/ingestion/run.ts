@@ -3,7 +3,7 @@ import { openDb } from "../db/index.js";
 import { SOURCES, findSource } from "../sources/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks } from "../resolve/resolver.js";
-import { deleteAgedPostings, pruneOldRows, runIngestion, staleWindowsFor } from "./pipeline.js";
+import { deleteAgedPostings, pruneOldRows, recomputeCanonical, runIngestion, staleWindowsFor } from "./pipeline.js";
 import { logAged, logPrune, logResolve } from "./scheduler.js";
 
 /**
@@ -43,7 +43,9 @@ async function main(): Promise<void> {
     );
     if (summaries.some((s) => s.status !== "skipped")) {
       logPrune(pruneOldRows(db, new Date(), config.pruneAfterDays), config.pruneAfterDays);
-      logAged(await deleteAgedPostings(db, new Date()));
+      const deleted = await deleteAgedPostings(db, new Date());
+      logAged(deleted);
+      if (deleted > 0) recomputeCanonical(db, new Date());
     }
   }
   if (resolve || resolveOnly) logResolve(await resolveApplyLinks(db, liveNet, { now: new Date(), discoveryBudget }));
