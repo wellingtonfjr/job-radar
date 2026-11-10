@@ -14,6 +14,8 @@ export interface SourceRunSummary {
   fetched: number;
   inserted: number;
   closed: number;
+  /** Stored roles deleted because they passed MAX_LISTING_AGE_DAYS (not counted as closed). */
+  aged?: number;
   errors: FeedError[];
 }
 
@@ -173,6 +175,13 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       "INSERT INTO job_descriptions (job_id, description) VALUES (?, ?) ON CONFLICT(job_id) DO UPDATE SET description = excluded.description",
     );
     const dropDescription = db.prepare("DELETE FROM job_descriptions WHERE job_id = ?");
+    const rememberAged = db.prepare(REMEMBER_AGED_SQL);
+    const rememberAgedInFeed = db.prepare(
+      `INSERT INTO aged_fingerprints (fingerprint, aged_at)
+       SELECT fingerprint, @now FROM jobs WHERE source = @source AND feed = @feed AND posted_at < @postedBefore AND source_rank = 0
+       ON CONFLICT(fingerprint) DO UPDATE SET aged_at = excluded.aged_at`,
+    );
+    const deleteAgedInFeed = db.prepare("DELETE FROM jobs WHERE source = @source AND feed = @feed AND posted_at < @postedBefore");
     const openInFeed = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE source = ? AND feed = ? AND closed_at IS NULL");
     // Anything in a complete feed that this run didn't touch is gone upstream.
     const closeMissing = db.prepare(
@@ -182,8 +191,13 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
     // Writes one feed's jobs. Called by the adapter as each board arrives
     // (`emit`), or below for adapters that return everything at once.
     let written = 0;
+    // Postings published longer ago than the listing shows aren't stored at all.
+    const postedBefore = now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000;
+    const postedBeforeIso = new Date(postedBefore).toISOString();
     const writeResult = (result: FeedResult): void => {
       const seen = new Map<string, NormalizedJob>();
+      const agedFingerprints = new Set<string>();
+      let tooOld = 0;
       for (const raw of result.jobs) {
         try {
           const job = normalizeJob(source.id, result.feed, raw);
@@ -191,6 +205,12 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
             // Not a web address (or a script/data URL): never stored, but
             // reported so a source sending bad links doesn't go unnoticed.
             summary.errors.push({ feed: result.feed, error: `rejected unsafe or invalid URL for ${raw.externalId}` });
+            continue;
+          }
+          if (job.postedAt && Date.parse(job.postedAt) < postedBefore) {
+            tooOld += 1;
+            // Only the employer's own listing says the opening is still up.
+            if (source.kind === "ats") agedFingerprints.add(job.fingerprint);
             continue;
           }
           // Résumé pools are skipped (and closed, if stored before).
@@ -207,12 +227,19 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
           if (job.description) putDescription.run(job.id, job.description);
           else dropDescription.run(job.id);
         }
+        // Stored roles of this feed that are now too old go (after the upserts,
+        // which refresh the date of roles reposted upstream). Not counted as closed.
+        const aged = { now: startedAt, source: source.id, feed: result.feed, postedBefore: postedBeforeIso };
+        for (const fp of agedFingerprints) rememberAged.run(fp, startedAt);
+        rememberAgedInFeed.run(aged);
+        summary.aged = (summary.aged ?? 0) + deleteAgedInFeed.run(aged).changes;
         if (result.complete) {
           // Guard against partial responses: a "complete" board that suddenly
           // lists under half of what was open is more likely an upstream
           // glitch than mass hiring, so nothing is closed this run. Jobs the
           // adapter filtered out on purpose still count as listed.
           const open = (openInFeed.get(source.id, result.feed) as { n: number }).n;
+          // Aged rows were just deleted, so they're in neither count.
           const listed = seen.size + (result.skipped ?? 0);
           if (open >= MIN_FEED_FOR_DROP_GUARD && listed < open * DROP_GUARD_RATIO) {
             summary.errors.push({ feed: result.feed, error: `listed ${listed} of ${open} open jobs; not closing any this run` });
@@ -355,11 +382,11 @@ export const MAX_LISTING_AGE_DAYS = 60;
  *   employer's own ATS beats aggregators). Same-source matches are left
  *   alone — one company posting "Account Executive" in five cities is five
  *   real openings.
- * - Postings older than MAX_LISTING_AGE_DAYS (by `posted_at`, else when we
- *   first saw them) are hidden, from every source. They stay open (their
- *   page works by link, and the `source` filter still shows them) and still
- *   hide their job-board copies, so the same posting doesn't resurface
- *   through a board with a newer date.
+ * - Postings older than MAX_LISTING_AGE_DAYS are hidden, from every source.
+ *   Dated ones aren't stored at all past that age (see ingestSource and
+ *   pruneOldRows); this mostly hides undated roles, by when we first saw
+ *   them. Those stay open (their page works by link, and the `source`
+ *   filter still shows them) and still hide their job-board copies.
  * - Roles with enough recent "Role closed?" reports are hidden pending
  *   review (see accuracy/reports.ts). Like old postings they stay open,
  *   so they still hide their copies: a report hides the opening, not just
@@ -371,6 +398,11 @@ export function recomputeCanonical(db: Db, now: Date): void {
     `UPDATE jobs SET canonical = closed_at IS NULL
       AND COALESCE(posted_at, first_seen_at) >= @postedBefore
       AND NOT ${HIDDEN_BY_REPORTS}
+      -- A job board's copy of an opening the employer posted too long ago and
+      -- still lists (remembered from an employer run in the last week).
+      AND NOT (jobs.source_rank > 0 AND EXISTS (
+        SELECT 1 FROM aged_fingerprints a WHERE a.fingerprint = jobs.fingerprint AND a.aged_at >= @agedSince
+      ))
       AND NOT EXISTS (
         SELECT 1 FROM jobs o
         WHERE o.fingerprint = jobs.fingerprint
@@ -378,7 +410,7 @@ export function recomputeCanonical(db: Db, now: Date): void {
           AND o.closed_at IS NULL
           AND (o.source_rank < jobs.source_rank OR (o.source_rank = jobs.source_rank AND o.source < jobs.source))
       )`,
-  ).run({ postedBefore, ...hiddenByReportsParams(now) });
+  ).run({ postedBefore, agedSince: new Date(now.getTime() - AGED_MEMORY_DAYS * 86_400_000).toISOString(), ...hiddenByReportsParams(now) });
 }
 
 const TIER_THRESHOLDS: [string, number][] = [
@@ -450,9 +482,14 @@ export interface PruneSummary {
  * too, so /api/stats always has a "last run" to show. "Role closed?" reports
  * only count for a week, so old ones go too (with their role, or not).
  *
- * No VACUUM: SQLite reuses the freed pages for new rows, so the file stops
- * growing instead of shrinking, and a VACUUM would rewrite the whole database
- * (needing as much free disk again) while blocking the API.
+ * Roles published more than MAX_LISTING_AGE_DAYS ago are deleted, open or
+ * not: the listing never shows them and ingestion no longer stores them
+ * (one still on its board this long is rarely a live opening). Roles without
+ * a publication date are left alone: deleting them by first-seen date would
+ * bring them back as "new" at the next run.
+ *
+ * No VACUUM here: SQLite reuses the freed pages for new rows, so the file
+ * stops growing instead of shrinking (see compactOnce for the one-off).
  */
 export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary {
   if (afterDays <= 0) return { jobs: 0, sourceRuns: 0, reports: 0 };
@@ -472,8 +509,56 @@ export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary
            AND id NOT IN (SELECT MAX(id) FROM source_runs WHERE finished_at IS NOT NULL GROUP BY source)`,
       )
       .run(before).changes,
-    reports: db.prepare("DELETE FROM job_reports WHERE created_at < ?").run(before).changes,
+    reports: (() => {
+      // Remembered aged openings are forgotten after the same window.
+      db.prepare("DELETE FROM aged_fingerprints WHERE aged_at < ?").run(before);
+      return db.prepare("DELETE FROM job_reports WHERE created_at < ?").run(before).changes;
+    })(),
   }))();
+}
+
+/** How recently an employer run must have listed an aged opening for its board copies to stay hidden. */
+const AGED_MEMORY_DAYS = 7;
+
+const REMEMBER_AGED_SQL =
+  "INSERT INTO aged_fingerprints (fingerprint, aged_at) VALUES (?, ?) ON CONFLICT(fingerprint) DO UPDATE SET aged_at = excluded.aged_at";
+
+/**
+ * Deletes roles published more than MAX_LISTING_AGE_DAYS ago, open or not,
+ * from every source (complete feeds already drop theirs during ingestion;
+ * this catches partially read feeds and the backlog). Employer (ATS) rows'
+ * fingerprints are remembered so job-board copies stay hidden. Undated roles are left alone:
+ * deleting them by first-seen date would bring them back as "new".
+ *
+ * In batches with pauses, by the posted_at index, so a large first run
+ * doesn't block the API; the WAL is truncated afterwards.
+ */
+export async function deleteAgedPostings(
+  db: Db,
+  now: Date,
+  { batchSize = 2000, pauseMs = 200 }: { batchSize?: number; pauseMs?: number } = {},
+): Promise<number> {
+  const postedBefore = new Date(now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000).toISOString();
+  const nowIso = now.toISOString();
+  const select = db.prepare("SELECT rowid AS rid, fingerprint, source_rank FROM jobs WHERE posted_at < ? LIMIT ?");
+  const remember = db.prepare(REMEMBER_AGED_SQL);
+  const remove = db.prepare("DELETE FROM jobs WHERE rowid = ?");
+  let total = 0;
+  for (;;) {
+    const rows = select.all(postedBefore, batchSize) as { rid: number; fingerprint: string; source_rank: number }[];
+    if (rows.length === 0) break;
+    db.transaction(() => {
+      for (const row of rows) {
+        if (row.source_rank === 0) remember.run(row.fingerprint, nowIso);
+        remove.run(row.rid);
+      }
+    })();
+    total += rows.length;
+    if (rows.length < batchSize) break;
+    await new Promise((resolve) => setTimeout(resolve, pauseMs));
+  }
+  if (total > 0) db.pragma("wal_checkpoint(TRUNCATE)");
+  return total;
 }
 
 /**
