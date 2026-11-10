@@ -56,7 +56,11 @@ function cleanLabel(value: string): string {
 function toIsoDate(value: string | null | undefined): string | null {
   if (!value) return null;
   const time = Date.parse(value);
-  return Number.isNaN(time) ? null : new Date(time).toISOString();
+  if (Number.isNaN(time)) return null;
+  // Dates before 1970 are bogus; future ones (even past year 9999, which
+  // wouldn't serialize as YYYY-… and would break date comparisons) become now.
+  if (new Date(time).getUTCFullYear() < 1970) return null;
+  return new Date(Math.min(time, Date.now())).toISOString();
 }
 
 export function normalizeJob(source: string, feed: string, raw: RawJob): NormalizedJob {

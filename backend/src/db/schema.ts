@@ -181,6 +181,17 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       description TEXT NOT NULL
     );
   `),
+
+  // Postings published more than MAX_LISTING_AGE_DAYS ago aren't kept (see
+  // deleteAgedPostings). Their fingerprints are remembered for a while so a
+  // job board's copy of the same opening, with a newer date, stays hidden.
+  (db) => db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_jobs_posted_at ON jobs(posted_at);
+    CREATE TABLE IF NOT EXISTS aged_fingerprints (
+      fingerprint TEXT PRIMARY KEY,
+      aged_at TEXT NOT NULL
+    );
+  `),
 ];
 
 export function migrate(db: Database.Database): void {

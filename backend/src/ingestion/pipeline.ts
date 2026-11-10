@@ -14,6 +14,8 @@ export interface SourceRunSummary {
   fetched: number;
   inserted: number;
   closed: number;
+  /** Stored roles deleted because they passed MAX_LISTING_AGE_DAYS (not counted as closed). */
+  aged?: number;
   errors: FeedError[];
 }
 
@@ -173,6 +175,13 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       "INSERT INTO job_descriptions (job_id, description) VALUES (?, ?) ON CONFLICT(job_id) DO UPDATE SET description = excluded.description",
     );
     const dropDescription = db.prepare("DELETE FROM job_descriptions WHERE job_id = ?");
+    const rememberAged = db.prepare(REMEMBER_AGED_SQL);
+    const rememberAgedInFeed = db.prepare(
+      `INSERT INTO aged_fingerprints (fingerprint, aged_at)
+       SELECT fingerprint, @now FROM jobs WHERE source = @source AND feed = @feed AND posted_at < @postedBefore
+       ON CONFLICT(fingerprint) DO UPDATE SET aged_at = excluded.aged_at`,
+    );
+    const deleteAgedInFeed = db.prepare("DELETE FROM jobs WHERE source = @source AND feed = @feed AND posted_at < @postedBefore");
     const openInFeed = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE source = ? AND feed = ? AND closed_at IS NULL");
     // Anything in a complete feed that this run didn't touch is gone upstream.
     const closeMissing = db.prepare(
@@ -184,8 +193,10 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
     let written = 0;
     // Postings published longer ago than the listing shows aren't stored at all.
     const postedBefore = now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000;
+    const postedBeforeIso = new Date(postedBefore).toISOString();
     const writeResult = (result: FeedResult): void => {
       const seen = new Map<string, NormalizedJob>();
+      const agedFingerprints = new Set<string>();
       let tooOld = 0;
       for (const raw of result.jobs) {
         try {
@@ -198,6 +209,7 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
           }
           if (job.postedAt && Date.parse(job.postedAt) < postedBefore) {
             tooOld += 1;
+            agedFingerprints.add(job.fingerprint);
             continue;
           }
           // Résumé pools are skipped (and closed, if stored before).
@@ -214,6 +226,12 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
           if (job.description) putDescription.run(job.id, job.description);
           else dropDescription.run(job.id);
         }
+        // Stored roles of this feed that are now too old go (after the upserts,
+        // which refresh the date of roles reposted upstream). Not counted as closed.
+        const aged = { now: startedAt, source: source.id, feed: result.feed, postedBefore: postedBeforeIso };
+        for (const fp of agedFingerprints) rememberAged.run(fp, startedAt);
+        rememberAgedInFeed.run(aged);
+        summary.aged = (summary.aged ?? 0) + deleteAgedInFeed.run(aged).changes;
         if (result.complete) {
           // Guard against partial responses: a "complete" board that suddenly
           // lists under half of what was open is more likely an upstream
@@ -378,6 +396,8 @@ export function recomputeCanonical(db: Db, now: Date): void {
     `UPDATE jobs SET canonical = closed_at IS NULL
       AND COALESCE(posted_at, first_seen_at) >= @postedBefore
       AND NOT ${HIDDEN_BY_REPORTS}
+      -- A job board's copy of an opening the employer posted too long ago.
+      AND NOT (jobs.source_rank > 0 AND EXISTS (SELECT 1 FROM aged_fingerprints a WHERE a.fingerprint = jobs.fingerprint))
       AND NOT EXISTS (
         SELECT 1 FROM jobs o
         WHERE o.fingerprint = jobs.fingerprint
@@ -441,8 +461,6 @@ export function recomputeCompanyTiers(db: Db): void {
 
 export interface PruneSummary {
   jobs: number;
-  /** Roles published more than MAX_LISTING_AGE_DAYS ago, open or not. */
-  oldPostings: number;
   sourceRuns: number;
   reports: number;
 }
@@ -469,11 +487,9 @@ export interface PruneSummary {
  * stops growing instead of shrinking (see compactOnce for the one-off).
  */
 export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary {
-  if (afterDays <= 0) return { jobs: 0, oldPostings: 0, sourceRuns: 0, reports: 0 };
+  if (afterDays <= 0) return { jobs: 0, sourceRuns: 0, reports: 0 };
   const before = new Date(now.getTime() - afterDays * 86_400_000).toISOString();
-  const postedBefore = new Date(now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000).toISOString();
   return db.transaction(() => ({
-    oldPostings: db.prepare("DELETE FROM jobs WHERE posted_at IS NOT NULL AND posted_at < ?").run(postedBefore).changes,
     jobs: db
       .prepare(
         `DELETE FROM jobs
@@ -488,8 +504,53 @@ export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary
            AND id NOT IN (SELECT MAX(id) FROM source_runs WHERE finished_at IS NOT NULL GROUP BY source)`,
       )
       .run(before).changes,
-    reports: db.prepare("DELETE FROM job_reports WHERE created_at < ?").run(before).changes,
+    reports: (() => {
+      // Remembered aged openings are forgotten after the same window.
+      db.prepare("DELETE FROM aged_fingerprints WHERE aged_at < ?").run(before);
+      return db.prepare("DELETE FROM job_reports WHERE created_at < ?").run(before).changes;
+    })(),
   }))();
+}
+
+const REMEMBER_AGED_SQL =
+  "INSERT INTO aged_fingerprints (fingerprint, aged_at) VALUES (?, ?) ON CONFLICT(fingerprint) DO UPDATE SET aged_at = excluded.aged_at";
+
+/**
+ * Deletes roles published more than MAX_LISTING_AGE_DAYS ago, open or not,
+ * from every source (complete feeds already drop theirs during ingestion;
+ * this catches partially read feeds and the backlog). Their fingerprints are
+ * remembered so job-board copies stay hidden. Undated roles are left alone:
+ * deleting them by first-seen date would bring them back as "new".
+ *
+ * In batches with pauses, by the posted_at index, so a large first run
+ * doesn't block the API; the WAL is truncated afterwards.
+ */
+export async function deleteAgedPostings(
+  db: Db,
+  now: Date,
+  { batchSize = 2000, pauseMs = 200 }: { batchSize?: number; pauseMs?: number } = {},
+): Promise<number> {
+  const postedBefore = new Date(now.getTime() - MAX_LISTING_AGE_DAYS * 86_400_000).toISOString();
+  const nowIso = now.toISOString();
+  const select = db.prepare("SELECT rowid AS rid, fingerprint FROM jobs WHERE posted_at < ? LIMIT ?");
+  const remember = db.prepare(REMEMBER_AGED_SQL);
+  const remove = db.prepare("DELETE FROM jobs WHERE rowid = ?");
+  let total = 0;
+  for (;;) {
+    const rows = select.all(postedBefore, batchSize) as { rid: number; fingerprint: string }[];
+    if (rows.length === 0) break;
+    db.transaction(() => {
+      for (const row of rows) {
+        remember.run(row.fingerprint, nowIso);
+        remove.run(row.rid);
+      }
+    })();
+    total += rows.length;
+    if (rows.length < batchSize) break;
+    await new Promise((resolve) => setTimeout(resolve, pauseMs));
+  }
+  if (total > 0) db.pragma("wal_checkpoint(TRUNCATE)");
+  return total;
 }
 
 /**

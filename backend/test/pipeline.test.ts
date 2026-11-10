@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../src/db/index.js";
-import { discoveredBoards, pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
+import { deleteAgedPostings, discoveredBoards, pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
 import { fetchBoards } from "../src/sources/boards.js";
 import type { CompanyBoard } from "../src/sources/companies.js";
 import type { FetchOutcome, SourceAdapter } from "../src/sources/types.js";
@@ -346,15 +346,16 @@ describe("runIngestion", () => {
     });
     await runIngestion(db, [ats, agg], { staleAfterDays: 30, now: () => T0 });
 
-    // The old ATS posting isn't stored, so the job board's recent copy of it is listed.
+    // The old ATS posting isn't stored, but it's remembered, so the job
+    // board's copy of it (with a newer date) doesn't resurface.
     expect(db.prepare("SELECT id, canonical, closed_at FROM jobs ORDER BY id").all()).toEqual([
-      { id: "agg:copy", canonical: 1, closed_at: null },
+      { id: "agg:copy", canonical: 0, closed_at: null },
       { id: "agg:fresh", canonical: 1, closed_at: null },
       { id: "ats:new", canonical: 1, closed_at: null },
     ]);
   });
 
-  it("closes stored roles once they age past the listing age, without tripping the drop guard, and prune deletes them", async () => {
+  it("deletes stored roles once they age past the listing age, without counting them as closed or tripping the drop guard", async () => {
     const ats = fakeSource("ats");
     const daysBefore = (d: number) => new Date(T0.getTime() - d * 86_400_000).toISOString();
     // 20 roles: 15 published 50 days ago, 5 published 5 days ago.
@@ -366,11 +367,36 @@ describe("runIngestion", () => {
     // 15 days later the first 15 are over 60 days old: still listed upstream, but no longer stored.
     const later = new Date(T0.getTime() + 15 * 86_400_000);
     const [run] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => later });
-    expect(run).toMatchObject({ status: "ok", fetched: 5, closed: 15 });
-    expect(openIds(db)).toHaveLength(5);
-
-    expect(pruneOldRows(db, later, 90)).toMatchObject({ oldPostings: 15 });
+    expect(run).toMatchObject({ status: "ok", fetched: 5, closed: 0, aged: 15 });
     expect(db.prepare("SELECT COUNT(*) AS n FROM jobs").get()).toEqual({ n: 5 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM aged_fingerprints").get()).toEqual({ n: 15 });
+  });
+
+  it("deletes aged roles of partially read feeds in batches, with their descriptions, and keeps undated ones", async () => {
+    const agg = fakeSource("agg", "aggregator");
+    const daysBefore = (d: number) => new Date(T0.getTime() - d * 86_400_000).toISOString();
+    agg.respond({
+      results: [
+        {
+          feed: "all",
+          complete: false,
+          jobs: [
+            ...Array.from({ length: 5 }, (_, i) => rawJob({ externalId: `a${i}`, title: `Aging ${i}`, postedAt: daysBefore(50), descriptionText: "Old." })),
+            rawJob({ externalId: "undated", title: "Undated", postedAt: null }),
+            rawJob({ externalId: "fresh", title: "Fresh", postedAt: daysBefore(1) }),
+          ],
+        },
+      ],
+      errors: [],
+    });
+    await runIngestion(db, [agg], { staleAfterDays: 30, now: () => T0 });
+    expect(db.prepare("SELECT COUNT(*) AS n FROM job_descriptions").get()).toEqual({ n: 5 });
+
+    const later = new Date(T0.getTime() + 15 * 86_400_000);
+    expect(await deleteAgedPostings(db, later, { batchSize: 2, pauseMs: 0 })).toBe(5);
+    expect(openIds(db)).toEqual(["agg:fresh", "agg:undated"]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM job_descriptions").get()).toEqual({ n: 0 });
+    expect(await deleteAgedPostings(db, later)).toBe(0);
   });
 
   it("derives company pay tiers from published salaries", async () => {
@@ -470,7 +496,7 @@ describe("pruneOldRows", () => {
 
   it("does nothing when disabled with 0", async () => {
     await seed();
-    expect(pruneOldRows(db, daysLater(400), 0)).toEqual({ jobs: 0, oldPostings: 0, sourceRuns: 0, reports: 0 });
+    expect(pruneOldRows(db, daysLater(400), 0)).toEqual({ jobs: 0, sourceRuns: 0, reports: 0 });
     expect(allIds()).toEqual(["ats:old", "ats:open", "ats:recent"]);
     expect(db.prepare("SELECT COUNT(*) AS n FROM source_runs").get()).toEqual({ n: 3 });
   });

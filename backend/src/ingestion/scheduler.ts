@@ -5,7 +5,7 @@ import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
 import type { SourceAdapter } from "../sources/types.js";
-import { MAX_LISTING_AGE_DAYS, pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
+import { deleteAgedPostings, MAX_LISTING_AGE_DAYS, pruneOldRows, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
 
 export interface Scheduler {
   stop(): void;
@@ -26,16 +26,19 @@ export function logResolve(summary: ResolveSummary): void {
 
 export function logPrune(summary: PruneSummary, afterDays: number): void {
   if (afterDays <= 0) return;
-  console.log(
-    `[ingest] pruned: postings over ${MAX_LISTING_AGE_DAYS}d old=${summary.oldPostings} · older than ${afterDays}d: closed jobs=${summary.jobs} source runs=${summary.sourceRuns} reports=${summary.reports}`,
-  );
+  console.log(`[ingest] pruned (older than ${afterDays}d): closed jobs=${summary.jobs} source runs=${summary.sourceRuns} reports=${summary.reports}`);
+}
+
+export function logAged(deleted: number): void {
+  if (deleted > 0) console.log(`[ingest] deleted ${deleted} postings published over ${MAX_LISTING_AGE_DAYS} days ago`);
 }
 
 function logSummaries(summaries: SourceRunSummary[]): void {
   for (const s of summaries) {
     if (s.status === "skipped") continue;
     const errors = s.errors.length > 0 ? ` errors=${s.errors.length} (first: ${s.errors[0]?.feed}: ${s.errors[0]?.error})` : "";
-    console.log(`[ingest] ${s.source}: ${s.status} fetched=${s.fetched} new=${s.inserted} closed=${s.closed}${errors}`);
+    const aged = s.aged ? ` aged out=${s.aged}` : "";
+    console.log(`[ingest] ${s.source}: ${s.status} fetched=${s.fetched} new=${s.inserted} closed=${s.closed}${aged}${errors}`);
   }
 }
 
@@ -94,6 +97,10 @@ export function startScheduler(
         logSummaries(summaries);
         // Housekeeping only after a cycle that actually fetched something.
         if (summaries.some((s) => s.status !== "skipped")) logPrune(pruneOldRows(db, new Date(), pruneAfterDays), pruneAfterDays);
+        return summaries;
+      })
+      .then(async (summaries) => {
+        if (summaries.some((s) => s.status !== "skipped")) logAged(await deleteAgedPostings(db, new Date()));
         return summaries;
       })
       // Then point board listings at the employers' own postings.
