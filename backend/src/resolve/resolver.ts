@@ -80,7 +80,12 @@ export async function resolveApplyLinks(db: Db, net: ResolverNet, options: Resol
   const getCachedBoard = db.prepare("SELECT provider, token, checked_at FROM ats_boards WHERE company_key = ?");
   const putCachedBoard = db.prepare(
     `INSERT INTO ats_boards (company_key, provider, token, checked_at) VALUES (?, ?, ?, ?)
-     ON CONFLICT(company_key) DO UPDATE SET provider = excluded.provider, token = excluded.token, checked_at = excluded.checked_at`,
+     ON CONFLICT(company_key) DO UPDATE SET provider = excluded.provider, token = excluded.token, checked_at = excluded.checked_at,
+       matched_at = CASE WHEN ats_boards.provider IS excluded.provider AND ats_boards.token IS excluded.token THEN ats_boards.matched_at END`,
+  );
+  // A matched posting confirms the board belongs to this company, so the whole board gets ingested.
+  const markMatched = db.prepare(
+    "UPDATE ats_boards SET company_name = ?, matched_at = COALESCE(matched_at, ?) WHERE company_key = ? AND provider IS NOT NULL",
   );
   const save = db.prepare("UPDATE jobs SET apply_url = ?, apply_method = ?, apply_checked_at = ? WHERE id = ?");
 
@@ -151,6 +156,7 @@ export async function resolveApplyLinks(db: Db, net: ResolverNet, options: Resol
       }
       summary.examined += 1;
       save.run(result?.url ?? null, result?.method ?? null, nowIso, job.id);
+      if (result?.method === "ats-discovery") markMatched.run(job.company, nowIso, companyKey(job.company));
       if (result) summary.resolved[result.method] += 1;
       else summary.unresolved += 1;
     } catch (err) {

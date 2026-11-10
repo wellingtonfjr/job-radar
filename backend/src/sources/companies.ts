@@ -11,7 +11,13 @@
  *   - Ashby:      jobs.ashbyhq.com/{token}
  *   - InHire:     {token}.inhire.app (Brazilian ATS)
  *   - SmartRecruiters: jobs.smartrecruiters.com/{token}/{postingId}
+ *   - Workable:   apply.workable.com/{token}
+ *   - Recruitee:  {token}.recruitee.com
  * and add `{ token, name }` to the matching list.
+ *
+ * Greenhouse, Lever, Ashby, InHire, Workable and Recruitee boards found by
+ * apply-link discovery are read too, on top of these lists (see
+ * `discoveredBoards` in ingestion/pipeline.ts).
  */
 export interface CompanyBoard {
   token: string;
@@ -150,4 +156,12 @@ export const SMARTRECRUITERS_BOARDS: SmartRecruitersBoard[] = [
   { token: "Devexperts", name: "Devexperts" },
   { token: "BoschGroup", name: "Bosch", functions: ["information_technology"] },
   { token: "DeliveryHero", name: "Delivery Hero", functions: ["information_technology"] },
+];
+
+export const WORKABLE_BOARDS: CompanyBoard[] = [{ token: "huggingface", name: "Hugging Face" }];
+
+export const RECRUITEE_BOARDS: CompanyBoard[] = [
+  { token: "channable", name: "Channable" },
+  { token: "hostaway", name: "Hostaway" },
+  { token: "bunq", name: "bunq" },
 ];

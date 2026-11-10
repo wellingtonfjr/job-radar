@@ -155,6 +155,20 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       value TEXT NOT NULL
     );
   `),
+
+  // Discovered boards whose postings matched a job-board listing are read in
+  // full (see discoveredBoards in ingestion/pipeline.ts).
+  (db) => db.exec(`
+    -- The company name as the job boards show it, used for the board's roles.
+    ALTER TABLE ats_boards ADD COLUMN company_name TEXT;
+    -- When a listing was first matched to a posting on this board.
+    ALTER TABLE ats_boards ADD COLUMN matched_at TEXT;
+    UPDATE ats_boards SET
+      matched_at = checked_at,
+      company_name = (SELECT MAX(j.company) FROM jobs j WHERE j.company_key = ats_boards.company_key AND j.apply_method = 'ats-discovery')
+    WHERE provider IS NOT NULL
+      AND EXISTS (SELECT 1 FROM jobs j WHERE j.company_key = ats_boards.company_key AND j.apply_method = 'ats-discovery');
+  `),
 ];
 
 export function migrate(db: Database.Database): void {

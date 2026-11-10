@@ -34,7 +34,8 @@ still open, and sends you to the employer's own posting whenever it can.
 
 ```
 Employer hiring pages                 Job boards
-(Greenhouse, Lever, Ashby, InHire)    (Himalayas, Jobicy, Arbeitnow, Get on Board)
+(Greenhouse, Lever, Ashby, InHire,    (Himalayas, Jobicy, Arbeitnow, Get on Board)
+ SmartRecruiters, Workable, Recruitee)
               │                                   │
               └──────────── twice a day ──────────┘
                                │
@@ -81,7 +82,8 @@ interval a source will ever be polled at, even with a smaller setting.
 
 | Source | Kind | Scope per run | Minimum interval |
 | --- | --- | --- | --- |
-| Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts` | 1h |
+| Greenhouse, Lever, Ashby | Employer ATS | Full board for each company in `backend/src/sources/companies.ts`, plus up to 100 discovered boards per ATS (see below) | 1h |
+| Workable, Recruitee | Employer ATS | Same: the companies in `companies.ts` plus discovered boards | 1h |
 | SmartRecruiters | Employer ATS | Full board for each company in `companies.ts` (IT roles only for Bosch and Delivery Hero); descriptions fetched for new postings, at most 500 a run | 2h |
 | InHire | Employer ATS (Brazil) | Remote and hybrid roles of each company in `companies.ts` (one detail request per role) | 6h |
 | Himalayas | Aggregator | Newest 1,000 remote jobs (the feed has 100k+) | 1h |
@@ -117,6 +119,15 @@ Every link is checked to still load before it's used. Results are re-checked
 weekly, discovered boards are cached per company (no board found → retried
 after 14 days), and each run searches at most 200 companies. For a first
 backfill, run `npm run resolve -- --discovery-budget=500`.
+
+Once a listing is matched to a posting on a discovered board, that board is
+read **in full** from then on, like the curated ones in `companies.ts`: the
+company's other roles show up straight from its ATS, with accurate closing.
+The match is what proves the board belongs to that company (a board name
+alone could be another company's). Up to 100 discovered boards per ATS are
+read a run (`MAX_DISCOVERED_BOARDS`), oldest match first, so a board keeps
+its slot. A board the ATS no longer has (404) is forgotten and its roles
+close at the next run.
 
 Not resolved on purpose: Jobicy only exposes the employer URL through a
 click-tracking endpoint (its terms ask apply buttons to use the feed URL),

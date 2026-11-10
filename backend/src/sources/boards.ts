@@ -1,7 +1,7 @@
 import type { RawJob } from "../domain/job.js";
 import type { CompanyBoard } from "./companies.js";
-import { errorMessage, mapLimit } from "./http.js";
-import type { FetchOutcome } from "./types.js";
+import { errorMessage, HttpError, mapLimit } from "./http.js";
+import type { FetchContext, FetchOutcome } from "./types.js";
 
 const BOARD_CONCURRENCY = 4;
 
@@ -22,8 +22,14 @@ export async function fetchBoards<B extends CompanyBoard>(
     if (result.status === "fulfilled") {
       outcome.results.push({ feed, complete: true, jobs: result.value });
     } else {
-      outcome.errors.push({ feed, error: errorMessage(result.reason) });
+      const gone = result.reason instanceof HttpError && (result.reason.status === 404 || result.reason.status === 410);
+      outcome.errors.push({ feed, error: errorMessage(result.reason), ...(gone ? { gone } : {}) });
     }
   });
   return outcome;
+}
+
+/** The curated boards plus the ones discovery found for this run. */
+export function withDiscovered(curated: readonly CompanyBoard[], context?: FetchContext): CompanyBoard[] {
+  return [...curated, ...(context?.discoveredBoards ?? [])];
 }
