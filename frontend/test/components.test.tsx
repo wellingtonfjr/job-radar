@@ -197,12 +197,18 @@ describe('freshness and "Role closed?"', () => {
 
 describe('SourcesFooter', () => {
   it('shows the audit precision when there is one', () => {
-    render(<SourcesFooter sources={[]} openPrecision={0.968} />);
+    render(<SourcesFooter openPrecision={0.968} />);
     expect(screen.getByText('97% of sampled roles verified open last week')).toBeInTheDocument();
   });
 
+  it('does not list where roles come from', () => {
+    render(<SourcesFooter openPrecision={0.968} />);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Greenhouse|Lever|Himalayas|Jobicy/)).not.toBeInTheDocument();
+  });
+
   it('hides it without enough verified samples', () => {
-    render(<SourcesFooter sources={[]} openPrecision={null} />);
+    render(<SourcesFooter openPrecision={null} />);
     expect(screen.queryByText(/sampled roles/)).not.toBeInTheDocument();
   });
 });
