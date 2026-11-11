@@ -1,4 +1,6 @@
+import type { AddressInfo } from "node:net";
 import { beforeEach, describe, expect, it } from "vitest";
+import { createApp } from "../src/app.js";
 import { openDb, type Db } from "../src/db/index.js";
 import { deleteAgedPostings, deleteOffTopicRoles, discoveredBoards, pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
 import { fetchBoards } from "../src/sources/boards.js";
@@ -578,5 +580,47 @@ describe("pruneOldRows", () => {
     expect(pruneOldRows(db, daysLater(400), 0)).toEqual({ jobs: 0, sourceRuns: 0, reports: 0 });
     expect(allIds()).toEqual(["ats:old", "ats:open", "ats:recent"]);
     expect(db.prepare("SELECT COUNT(*) AS n FROM source_runs").get()).toEqual({ n: 3 });
+  });
+});
+
+describe("remote roles repeated per city", () => {
+  it("lists one copy by default and, per country, one copy per set of accepted countries", async () => {
+    const db = openDb(":memory:");
+    const ats = fakeSource("ats");
+    const copy = (id: string, locations: string[]) => rawJob({ externalId: id, title: "Product Manager - Remote, Latin America", company: "Bluelight", locations });
+    ats.respond({
+      results: [
+        {
+          feed: "bluelight",
+          complete: true,
+          jobs: [
+            copy("1", ["Remote - Paraguay"]),
+            copy("2", ["Remote - Paraguay"]),
+            copy("3", ["Remote - Brazil"]),
+            copy("4", ["Remote - Brazil"]),
+            // On-site roles in several cities are separate openings: kept.
+            rawJob({ externalId: "5", title: "Backend Engineer", company: "Bluelight", workplace: "onsite", locations: ["Berlin"] }),
+            rawJob({ externalId: "6", title: "Backend Engineer", company: "Bluelight", workplace: "onsite", locations: ["Munich"] }),
+          ],
+        },
+      ],
+      errors: [],
+    });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    const repeats = Object.fromEntries((db.prepare("SELECT id, remote_repeat FROM jobs").all() as { id: string; remote_repeat: number }[]).map((r) => [r.id, r.remote_repeat]));
+    expect(repeats).toEqual({ "ats:1": 0, "ats:2": 2, "ats:3": 1, "ats:4": 2, "ats:5": 0, "ats:6": 0 });
+
+    const server = createApp(db).listen(0);
+    await new Promise((r) => server.once("listening", r));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const ids = async (q: string) => ((await (await fetch(`${base}/api/jobs?${q}`)).json()) as { jobs: { id: string }[] }).jobs.map((j) => j.id).sort();
+    try {
+      expect(await ids("pageSize=50")).toEqual(["ats:1", "ats:5", "ats:6"]);
+      expect(await ids("country=BR")).toEqual(["ats:3"]);
+      expect(await ids("country=PY")).toEqual(["ats:1"]);
+      expect(((await (await fetch(`${base}/api/stats`)).json()) as { totals: { openJobs: number } }).totals.openJobs).toBe(3);
+    } finally {
+      server.close();
+    }
   });
 });

@@ -1258,20 +1258,24 @@ input {
     width: 40px;
     height: 40px;
   }
+  /* In the flow under the details: pinned to the corner, it covered long
+     company names and titles. */
   .job-card__meta {
-    position: absolute;
-    top: 14px;
-    right: 14px;
+    grid-column: 2;
+    grid-row: auto;
     flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px 8px;
+    margin-top: -6px;
     padding-bottom: 0;
+    white-space: normal;
   }
   .role-marks--compact {
     grid-column: 1 / -1;
     grid-row: auto;
     margin: -10px -6px -8px 0;
-  }
-  .job-card__company {
-    padding-right: 72px;
   }
   .job-detail--page {
     padding: 18px;

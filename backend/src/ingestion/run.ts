@@ -51,7 +51,7 @@ async function main(): Promise<void> {
     }
   }
   if (resolve || resolveOnly) logResolve(await resolveApplyLinks(db, liveNet, { now: new Date(), discoveryBudget }));
-  const open = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE closed_at IS NULL AND canonical = 1").get() as { n: number };
+  const open = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE closed_at IS NULL AND canonical = 1 AND remote_repeat = 0").get() as { n: number };
   console.log(`[ingest] done. ${open.n} open jobs (deduplicated).`);
   db.close();
 }

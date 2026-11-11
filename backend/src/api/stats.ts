@@ -14,7 +14,7 @@ interface RunRow {
   errors: string;
 }
 
-const OPEN = "closed_at IS NULL AND canonical = 1";
+const OPEN = "closed_at IS NULL AND canonical = 1 AND remote_repeat = 0";
 
 /**
  * Headline numbers, facet counts and per-source health. Everything here is

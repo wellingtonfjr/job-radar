@@ -32,7 +32,7 @@ export function buildSitemap(db: Db, siteUrl: string): string {
   const rows = db
     .prepare(
       `SELECT id, COALESCE(posted_at, first_seen_at) AS date FROM jobs
-       WHERE closed_at IS NULL AND canonical = 1
+       WHERE closed_at IS NULL AND canonical = 1 AND remote_repeat = 0
        ORDER BY date DESC, id
        LIMIT ?`,
     )

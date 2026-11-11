@@ -192,6 +192,11 @@ const MIGRATIONS: ((db: Database.Database) => void)[] = [
       aged_at TEXT NOT NULL
     );
   `),
+
+  // A remote copy of a role its company already lists remotely under the same
+  // source (e.g. one posting per city): 1 if the copies differ in where they
+  // accept candidates from, 2 if an earlier copy has the same; see recomputeCanonical.
+  (db) => db.exec(`ALTER TABLE jobs ADD COLUMN remote_repeat INTEGER NOT NULL DEFAULT 0;`),
 ];
 
 export function migrate(db: Database.Database): void {
