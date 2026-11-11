@@ -426,7 +426,7 @@ export function recomputeCanonical(db: Db, now: Date): void {
       )`,
   ).run({ postedBefore, agedSince: new Date(now.getTime() - AGED_MEMORY_DAYS * 86_400_000).toISOString(), ...hiddenByReportsParams(now) });
   // Remote roles a company posts once per city or country under the same
-  // source are one opening to a remote candidate: only the first is listed
+  // source are one opening to a remote candidate: one copy is listed
   // by default (the country filter still shows the copies open to it).
   // 2 = an earlier copy accepts the same countries, so it's hidden even then.
   // The copy shown: open to everyone if one is, else the newest. One pass
