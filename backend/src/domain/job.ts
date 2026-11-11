@@ -29,6 +29,16 @@ export const CATEGORIES = [
 
 export type CategoryId = (typeof CATEGORIES)[number]["id"];
 
+/**
+ * job-radar is for people in tech: only roles in these categories are kept
+ * (ingestion skips the rest and the cleanup deletes stored ones).
+ */
+export const TECH_CATEGORIES: readonly CategoryId[] = ["software-development", "devops", "data", "ai-ml", "qa", "security", "product", "design"];
+
+export function isTechCategory(category: string): boolean {
+  return (TECH_CATEGORIES as readonly string[]).includes(category);
+}
+
 export const SENIORITIES = ["intern", "junior", "mid", "senior", "lead", "executive"] as const;
 export type Seniority = (typeof SENIORITIES)[number];
 

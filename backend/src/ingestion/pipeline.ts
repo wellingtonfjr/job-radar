@@ -1,7 +1,7 @@
 import { HIDDEN_BY_REPORTS, hiddenByReportsParams } from "../accuracy/reports.js";
 import { CLOSED_VERDICTS_TO_CLOSE } from "../accuracy/verify.js";
 import type { Db } from "../db/index.js";
-import type { NormalizedJob } from "../domain/job.js";
+import { isTechCategory, TECH_CATEGORIES, type NormalizedJob } from "../domain/job.js";
 import { companyKey, isOpening, normalizeJob } from "../normalize/index.js";
 import { toSearchKey } from "../normalize/text.js";
 import { errorMessage } from "../sources/http.js";
@@ -16,6 +16,8 @@ export interface SourceRunSummary {
   closed: number;
   /** Stored roles deleted because they passed MAX_LISTING_AGE_DAYS (not counted as closed). */
   aged?: number;
+  /** Stored roles deleted because they aren't in a tech category (not counted as closed). */
+  offTopic?: number;
   errors: FeedError[];
 }
 
@@ -182,6 +184,8 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
        ON CONFLICT(fingerprint) DO UPDATE SET aged_at = excluded.aged_at`,
     );
     const deleteAgedInFeed = db.prepare("DELETE FROM jobs WHERE source = @source AND feed = @feed AND posted_at < @postedBefore");
+    const deleteOffTopicInFeed = db.prepare(`DELETE FROM jobs WHERE source = @source AND feed = @feed AND ${OFF_TOPIC_SQL}`);
+    const deleteById = db.prepare("DELETE FROM jobs WHERE id = ?");
     const openInFeed = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE source = ? AND feed = ? AND closed_at IS NULL");
     // Anything in a complete feed that this run didn't touch is gone upstream.
     const closeMissing = db.prepare(
@@ -198,6 +202,8 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       const seen = new Map<string, NormalizedJob>();
       const agedFingerprints = new Set<string>();
       let tooOld = 0;
+      // Off-topic jobs this feed lists: deleted by id, in case one was stored as tech before.
+      const offTopicIds: string[] = [];
       for (const raw of result.jobs) {
         try {
           const job = normalizeJob(source.id, result.feed, raw);
@@ -205,6 +211,11 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
             // Not a web address (or a script/data URL): never stored, but
             // reported so a source sending bad links doesn't go unnoticed.
             summary.errors.push({ feed: result.feed, error: `rejected unsafe or invalid URL for ${raw.externalId}` });
+            continue;
+          }
+          // Not a tech role: listed upstream, left out on purpose.
+          if (!isTechCategory(job.category)) {
+            offTopicIds.push(job.id);
             continue;
           }
           if (job.postedAt && Date.parse(job.postedAt) < postedBefore) {
@@ -233,13 +244,16 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
         for (const fp of agedFingerprints) rememberAged.run(fp, startedAt);
         rememberAgedInFeed.run(aged);
         summary.aged = (summary.aged ?? 0) + deleteAgedInFeed.run(aged).changes;
+        let offTopic = deleteOffTopicInFeed.run({ source: source.id, feed: result.feed }).changes;
+        for (const id of offTopicIds) offTopic += deleteById.run(id).changes;
+        summary.offTopic = (summary.offTopic ?? 0) + offTopic;
         if (result.complete) {
           // Guard against partial responses: a "complete" board that suddenly
           // lists under half of what was open is more likely an upstream
           // glitch than mass hiring, so nothing is closed this run. Jobs the
           // adapter filtered out on purpose still count as listed.
           const open = (openInFeed.get(source.id, result.feed) as { n: number }).n;
-          // Aged rows were just deleted, so they're in neither count.
+          // Aged and off-topic stored rows were just deleted, so they're in neither count.
           const listed = seen.size + (result.skipped ?? 0);
           if (open >= MIN_FEED_FOR_DROP_GUARD && listed < open * DROP_GUARD_RATIO) {
             summary.errors.push({ feed: result.feed, error: `listed ${listed} of ${open} open jobs; not closing any this run` });
@@ -515,6 +529,32 @@ export function pruneOldRows(db: Db, now: Date, afterDays: number): PruneSummary
       return db.prepare("DELETE FROM job_reports WHERE created_at < ?").run(before).changes;
     })(),
   }))();
+}
+
+/** Roles outside TECH_CATEGORIES (category ids are fixed identifiers, safe to inline). */
+const OFF_TOPIC_SQL = `category NOT IN (${TECH_CATEGORIES.map((c) => `'${c}'`).join(", ")})`;
+
+/**
+ * Deletes stored roles that aren't in a tech category, from every source, in
+ * batches with pauses so the API keeps answering. Ingestion already skips
+ * them; this clears what was stored before (and roles reclassified since).
+ */
+export async function deleteOffTopicRoles(db: Db, { batchSize = 2000, pauseMs = 200 }: { batchSize?: number; pauseMs?: number } = {}): Promise<number> {
+  const select = db.prepare(`SELECT rowid AS rid FROM jobs WHERE ${OFF_TOPIC_SQL} LIMIT ?`);
+  const remove = db.prepare("DELETE FROM jobs WHERE rowid = ?");
+  let total = 0;
+  for (;;) {
+    const rows = select.all(batchSize) as { rid: number }[];
+    if (rows.length === 0) break;
+    db.transaction(() => {
+      for (const row of rows) remove.run(row.rid);
+    })();
+    total += rows.length;
+    if (rows.length < batchSize) break;
+    await new Promise((resolve) => setTimeout(resolve, pauseMs));
+  }
+  if (total > 0) db.pragma("wal_checkpoint(TRUNCATE)");
+  return total;
 }
 
 /** How recently an employer run must have listed an aged opening for its board copies to stay hidden. */

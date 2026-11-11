@@ -7,8 +7,8 @@ import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { compactOnce, moveDescriptions } from "./db/descriptions.js";
 import { openDb } from "./db/index.js";
-import { staleWindowsFor } from "./ingestion/pipeline.js";
-import { startScheduler } from "./ingestion/scheduler.js";
+import { deleteOffTopicRoles, recomputeCanonical, staleWindowsFor } from "./ingestion/pipeline.js";
+import { logOffTopic, startScheduler } from "./ingestion/scheduler.js";
 import { SOURCES } from "./sources/index.js";
 
 const db = openDb(config.dbPath);
@@ -53,8 +53,15 @@ if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `n
 // existed, then compacts the database once (blocks for a while; see compactOnce).
 // Don't run `npm run ingest` or the audit by hand until "[db] compacted" is logged:
 // a second connection's long reads would let the WAL grow during the move.
+// Before compacting, drop roles outside the tech categories (the site is tech-only).
 moveDescriptions(db)
   .catch((err: unknown) => console.error("[db] moving descriptions failed:", err))
+  .then(async () => {
+    const offTopic = await deleteOffTopicRoles(db);
+    logOffTopic(offTopic);
+    if (offTopic > 0) recomputeCanonical(db, new Date());
+  })
+  .catch((err: unknown) => console.error("[db] deleting off-topic roles failed:", err))
   .then(() => compactOnce(db, config.dbPath))
   .catch((err: unknown) => console.error("[db] compacting failed:", err));
 

@@ -40,7 +40,7 @@ interface Seeded {
 async function seed(db: Db, roles: Seeded[], source = "himalayas"): Promise<void> {
   const board = fakeSource(source, "aggregator");
   board.respond({
-    results: [{ feed: "all", complete: false, jobs: roles.map((r) => rawJob({ externalId: r.id, title: `Role ${r.id}`, company: `Co ${r.id}` })) }],
+    results: [{ feed: "all", complete: false, jobs: roles.map((r) => rawJob({ externalId: r.id, title: `Engineer ${r.id}`, company: `Co ${r.id}` })) }],
     errors: [],
   });
   await runIngestion(db, [board], { staleAfterDays: 30, now: () => T0 });
@@ -97,7 +97,7 @@ describe("liveness check", () => {
     await seed(db, [{ id: "1", apply: "https://job-boards.greenhouse.io/acme/jobs/1" }]);
     // The same opening on a lower-ranked job board, hidden behind the Himalayas copy.
     const other = fakeSource("remotive", "aggregator");
-    other.respond({ results: [{ feed: "all", complete: false, jobs: [rawJob({ externalId: "r1", title: "Role 1", company: "Co 1" })] }], errors: [] });
+    other.respond({ results: [{ feed: "all", complete: false, jobs: [rawJob({ externalId: "r1", title: "Engineer 1", company: "Co 1" })] }], errors: [] });
     await runIngestion(db, [other], { staleAfterDays: 30, now: () => T0 });
     const canonical = () => db.prepare("SELECT id FROM jobs WHERE canonical = 1 AND closed_at IS NULL").all();
     expect(canonical()).toEqual([{ id: "himalayas:1" }]);

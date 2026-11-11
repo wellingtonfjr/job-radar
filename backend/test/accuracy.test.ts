@@ -172,8 +172,8 @@ async function seed(): Promise<Db> {
         feed: "all",
         complete: true,
         jobs: [
-          rawJob({ externalId: "h1", company: "Initech", title: "Analyst", url: "https://himalayas.app/jobs/h1" }),
-          rawJob({ externalId: "h2", company: "Hooli", title: "Writer", url: "https://himalayas.app/jobs/h2" }),
+          rawJob({ externalId: "h1", company: "Initech", title: "Data Analyst", url: "https://himalayas.app/jobs/h1" }),
+          rawJob({ externalId: "h2", company: "Hooli", title: "Mobile Engineer", url: "https://himalayas.app/jobs/h2" }),
         ],
       },
     ],

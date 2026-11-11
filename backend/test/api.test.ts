@@ -29,7 +29,7 @@ beforeAll(async () => {
           rawJob({ externalId: "1", title: "Senior Front-End Engineer", descriptionHtml: "<p>React, TypeScript</p>", salary: { min: 150_000, max: 180_000, currency: "USD", period: "year" }, postedAt: daysAgo(1) }),
           rawJob({ externalId: "2", title: "Product Designer", locations: ["Berlin, Germany"], workplace: "onsite", postedAt: daysAgo(3) }),
           rawJob({ externalId: "3", title: "Backend Engineer", locations: ["Remote - USA"], descriptionHtml: "<p>Go and Kafka. Python</p>", postedAt: daysAgo(20) }),
-          rawJob({ externalId: "4", title: "Account Executive", locations: ["Remote, LATAM"], postedAt: daysAgo(2) }),
+          rawJob({ externalId: "4", title: "QA Engineer", locations: ["Remote, LATAM"], postedAt: daysAgo(2) }),
           // Still open on the board, but posted long before the listing age (60 days).
           rawJob({ externalId: "5", title: "Forward Deployed Engineer", postedAt: daysAgo(400) }),
         ],
@@ -143,6 +143,8 @@ describe("GET /api/stats", () => {
     const { body } = await get("/api/stats");
     expect(body.totals).toMatchObject({ openJobs: 6, companies: 3, remote: 5, withSalary: 1, newLast7Days: 3 });
     expect(body.categories.find((c: any) => c.id === "design")).toMatchObject({ count: 1 });
+    // Tech-only: no non-tech categories are offered.
+    expect(body.categories.map((c: any) => c.id)).toEqual(["software-development", "devops", "data", "ai-ml", "qa", "security", "product", "design"]);
     expect(body.countries).toEqual(expect.arrayContaining(["BR", "DE", "US"]));
     expect(body.sources.find((s: any) => s.id === "greenhouse")).toMatchObject({ openJobs: 4, lastRun: { status: "ok", fetched: 4 } });
   });

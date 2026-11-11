@@ -31,7 +31,7 @@ beforeAll(async () => {
   const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString();
   // 55 filler roles, older than the named ones, to exercise the 50-item cap.
   const filler = Array.from({ length: 55 }, (_, i) =>
-    rawJob({ externalId: `f${i}`, title: `Support Specialist ${i}`, postedAt: daysAgo(10 + i / 100) }),
+    rawJob({ externalId: `f${i}`, title: `Frontend Developer ${i}`, postedAt: daysAgo(10 + i / 100) }),
   );
   ats.respond({
     results: [

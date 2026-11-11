@@ -62,7 +62,7 @@ describe("job descriptions", () => {
 
   it("stored the old way are served the same, and move out of jobs once, keeping newer ones", async () => {
     const ats = fakeSource("ats");
-    await ingest(ats, [1, 2, 3].map((n) => rawJob({ externalId: String(n), title: `Role ${n}` })), T0);
+    await ingest(ats, [1, 2, 3].map((n) => rawJob({ externalId: String(n), title: `Engineer ${n}` })), T0);
     // Rows as written before job_descriptions existed.
     const old = db.prepare("UPDATE jobs SET description = ? WHERE id = ?");
     old.run("Old text 1.", "ats:1");

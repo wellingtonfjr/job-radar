@@ -155,7 +155,7 @@ export const ptBR: Messages = {
   },
   footer: {
     about:
-      'As vagas vêm direto das páginas de carreira das empresas e são verificadas de novo, então uma vaga some assim que a empresa a tira do ar. Sites de vagas públicos cobrem o resto e sempre apontam para o anúncio original.',
+      'Só vagas de tecnologia: desenvolvimento, dados, DevOps, IA, QA, segurança, produto e design. Elas vêm direto das páginas de carreira das empresas e são verificadas de novo, então uma vaga some assim que a empresa a tira do ar. Sites de vagas públicos cobrem o resto e sempre apontam para o anúncio original.',
     analytics: 'Contamos visitas e cliques de forma anônima (sem cookies, sem contas e nunca o que você digita na busca) para saber quais filtros e vagas são úteis.',
     precision: (percent: string) => `${percent} das vagas da amostra confirmadas abertas na última semana`,
   },

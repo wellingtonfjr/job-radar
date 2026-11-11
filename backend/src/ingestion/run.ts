@@ -3,8 +3,8 @@ import { openDb } from "../db/index.js";
 import { SOURCES, findSource } from "../sources/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks } from "../resolve/resolver.js";
-import { deleteAgedPostings, pruneOldRows, recomputeCanonical, runIngestion, staleWindowsFor } from "./pipeline.js";
-import { logAged, logPrune, logResolve } from "./scheduler.js";
+import { deleteAgedPostings, deleteOffTopicRoles, pruneOldRows, recomputeCanonical, runIngestion, staleWindowsFor } from "./pipeline.js";
+import { logAged, logOffTopic, logPrune, logResolve } from "./scheduler.js";
 
 /**
  * CLI: `npm run ingest` runs every due source once;
@@ -45,7 +45,9 @@ async function main(): Promise<void> {
       logPrune(pruneOldRows(db, new Date(), config.pruneAfterDays), config.pruneAfterDays);
       const deleted = await deleteAgedPostings(db, new Date());
       logAged(deleted);
-      if (deleted > 0) recomputeCanonical(db, new Date());
+      const offTopic = await deleteOffTopicRoles(db);
+      logOffTopic(offTopic);
+      if (deleted + offTopic > 0) recomputeCanonical(db, new Date());
     }
   }
   if (resolve || resolveOnly) logResolve(await resolveApplyLinks(db, liveNet, { now: new Date(), discoveryBudget }));
