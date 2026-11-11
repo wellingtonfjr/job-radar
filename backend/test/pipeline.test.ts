@@ -195,6 +195,34 @@ describe("runIngestion", () => {
     expect(await deleteOffTopicRoles(db)).toBe(0);
   });
 
+  it("doesn't let off-topic jobs weaken the drop guard on a mixed board", async () => {
+    const ats = fakeSource("ats");
+    const tech = Array.from({ length: 10 }, (_, i) => rawJob({ externalId: `t${i}`, title: `Backend Engineer ${i}` }));
+    const sales = Array.from({ length: 15 }, (_, i) => rawJob({ externalId: `s${i}`, title: `Account Executive ${i}` }));
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [...tech, ...sales] }], errors: [] });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    expect(openIds(db)).toHaveLength(10);
+
+    // A glitch returns 3 of the 10 tech roles but every sales role: nothing closes.
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [...tech.slice(0, 3), ...sales] }], errors: [] });
+    const [glitch] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(glitch).toMatchObject({ status: "partial", closed: 0 });
+    expect(glitch?.errors[0]?.error).toMatch(/listed 3 of 10/);
+    expect(openIds(db)).toHaveLength(10);
+  });
+
+  it("deletes a role that its feed now lists as non-tech, with its description", async () => {
+    const ats = fakeSource("ats");
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1", title: "Backend Engineer", descriptionText: "Go." }), rawJob({ externalId: "2", title: "Frontend Engineer" })] }], errors: [] });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    // The same posting is retitled as a sales role.
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs: [rawJob({ externalId: "1", title: "Account Executive" }), rawJob({ externalId: "2", title: "Frontend Engineer" })] }], errors: [] });
+    const [run] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(run).toMatchObject({ closed: 0, offTopic: 1 });
+    expect(db.prepare("SELECT id FROM jobs ORDER BY id").all()).toEqual([{ id: "ats:2" }]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM job_descriptions").get()).toEqual({ n: 0 });
+  });
+
   it("deletes a feed's stored off-topic roles during ingestion, counted apart from closures", async () => {
     const ats = fakeSource("ats");
     const jobs = Array.from({ length: 4 }, (_, i) => rawJob({ externalId: String(i), title: `Data Engineer ${i}` }));

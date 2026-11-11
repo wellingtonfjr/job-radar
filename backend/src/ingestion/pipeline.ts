@@ -185,6 +185,7 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
     );
     const deleteAgedInFeed = db.prepare("DELETE FROM jobs WHERE source = @source AND feed = @feed AND posted_at < @postedBefore");
     const deleteOffTopicInFeed = db.prepare(`DELETE FROM jobs WHERE source = @source AND feed = @feed AND ${OFF_TOPIC_SQL}`);
+    const deleteById = db.prepare("DELETE FROM jobs WHERE id = ?");
     const openInFeed = db.prepare("SELECT COUNT(*) AS n FROM jobs WHERE source = ? AND feed = ? AND closed_at IS NULL");
     // Anything in a complete feed that this run didn't touch is gone upstream.
     const closeMissing = db.prepare(
@@ -201,7 +202,8 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
       const seen = new Map<string, NormalizedJob>();
       const agedFingerprints = new Set<string>();
       let tooOld = 0;
-      let offTopic = 0;
+      // Off-topic jobs this feed lists: deleted by id, in case one was stored as tech before.
+      const offTopicIds: string[] = [];
       for (const raw of result.jobs) {
         try {
           const job = normalizeJob(source.id, result.feed, raw);
@@ -213,7 +215,7 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
           }
           // Not a tech role: listed upstream, left out on purpose.
           if (!isTechCategory(job.category)) {
-            offTopic += 1;
+            offTopicIds.push(job.id);
             continue;
           }
           if (job.postedAt && Date.parse(job.postedAt) < postedBefore) {
@@ -242,16 +244,17 @@ export async function ingestSource(db: Db, source: SourceAdapter, now: Date): Pr
         for (const fp of agedFingerprints) rememberAged.run(fp, startedAt);
         rememberAgedInFeed.run(aged);
         summary.aged = (summary.aged ?? 0) + deleteAgedInFeed.run(aged).changes;
-        summary.offTopic = (summary.offTopic ?? 0) + deleteOffTopicInFeed.run({ source: source.id, feed: result.feed }).changes;
+        let offTopic = deleteOffTopicInFeed.run({ source: source.id, feed: result.feed }).changes;
+        for (const id of offTopicIds) offTopic += deleteById.run(id).changes;
+        summary.offTopic = (summary.offTopic ?? 0) + offTopic;
         if (result.complete) {
           // Guard against partial responses: a "complete" board that suddenly
           // lists under half of what was open is more likely an upstream
           // glitch than mass hiring, so nothing is closed this run. Jobs the
           // adapter filtered out on purpose still count as listed.
           const open = (openInFeed.get(source.id, result.feed) as { n: number }).n;
-          // Aged and off-topic stored rows were just deleted, so they're in neither
-          // count; off-topic jobs the feed listed count as listed, like `skipped`.
-          const listed = seen.size + (result.skipped ?? 0) + offTopic;
+          // Aged and off-topic stored rows were just deleted, so they're in neither count.
+          const listed = seen.size + (result.skipped ?? 0);
           if (open >= MIN_FEED_FOR_DROP_GUARD && listed < open * DROP_GUARD_RATIO) {
             summary.errors.push({ feed: result.feed, error: `listed ${listed} of ${open} open jobs; not closing any this run` });
           } else {
