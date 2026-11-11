@@ -5,7 +5,7 @@ import { htmlToText } from "../src/normalize/html.js";
 import { fingerprint, isOpening, normalizeJob } from "../src/normalize/index.js";
 import { detectLanguage } from "../src/normalize/language.js";
 import { inferWorkplace, parseAllowedCountries, splitLocations, withoutWorkModes } from "../src/normalize/location.js";
-import { annualUsd, extractSalaryFromDescription, parseSalaryText } from "../src/normalize/salary.js";
+import { annualUsd, extractSalaryFromDescription, parseSalaryText, validateSalary } from "../src/normalize/salary.js";
 import { extractSkills } from "../src/normalize/skills.js";
 import { toSearchKey } from "../src/normalize/text.js";
 import { safeUrl } from "../src/normalize/url.js";
@@ -381,5 +381,21 @@ describe("normalizeJob locations", () => {
 
   it("maps Washington, D.C. to the US", () => {
     expect(normalizeJob("lever", "acme", { ...base, locations: ["Washington, D.C."] }).allowedCountries).toEqual(["US"]);
+  });
+});
+
+describe("validateSalary", () => {
+  it("drops implausible bounds from typos, keeps real ranges", () => {
+    // "$92,000 – $11,500,000": the maximum is a typo.
+    expect(validateSalary({ min: 92_000, max: 11_500_000, currency: "USD", period: "year" })).toEqual({ min: 92_000, max: null, currency: "USD", period: "year" });
+    // A range over 6x its minimum keeps only the minimum; wide real ones (OTE, hourly) stay.
+    expect(validateSalary({ min: 50_000, max: 350_000, currency: "usd", period: "year" })).toEqual({ min: 50_000, max: null, currency: "USD", period: "year" });
+    expect(validateSalary({ min: 100_000, max: 500_000, currency: "USD", period: "year" })).toEqual({ min: 100_000, max: 500_000, currency: "USD", period: "year" });
+    expect(validateSalary({ min: 13, max: 54, currency: "USD", period: "hour" })).toEqual({ min: 13, max: 54, currency: "USD", period: "hour" });
+    // Hourly ceilings are judged per year: $2,000/h is over $3M a year.
+    expect(validateSalary({ min: 2_000, max: null, currency: "USD", period: "hour" })).toBeNull();
+    // Normal ranges are untouched.
+    expect(validateSalary({ min: 150_000, max: 190_000, currency: "USD", period: "year" })).toEqual({ min: 150_000, max: 190_000, currency: "USD", period: "year" });
+    expect(validateSalary({ min: 60, max: 90, currency: "USD", period: "hour" })).toEqual({ min: 60, max: 90, currency: "USD", period: "hour" });
   });
 });

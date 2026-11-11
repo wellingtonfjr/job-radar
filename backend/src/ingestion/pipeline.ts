@@ -425,6 +425,25 @@ export function recomputeCanonical(db: Db, now: Date): void {
           AND (o.source_rank < jobs.source_rank OR (o.source_rank = jobs.source_rank AND o.source < jobs.source))
       )`,
   ).run({ postedBefore, agedSince: new Date(now.getTime() - AGED_MEMORY_DAYS * 86_400_000).toISOString(), ...hiddenByReportsParams(now) });
+  // Remote roles a company posts once per city or country under the same
+  // source are one opening to a remote candidate: one copy is listed
+  // by default (the country filter still shows the copies open to it).
+  // 2 = an earlier copy accepts the same countries, so it's hidden even then.
+  // The copy shown: open to everyone if one is, else the newest. One pass
+  // with window functions (a correlated subquery per row took minutes), in
+  // one transaction so readers never see every repeat at once.
+  const ranking = "ORDER BY allowed_countries IS NULL DESC, COALESCE(posted_at, first_seen_at) DESC, id";
+  db.transaction(() => {
+    db.exec("UPDATE jobs SET remote_repeat = 0 WHERE remote_repeat != 0");
+    db.exec(`WITH ranked AS (
+        SELECT id,
+          ROW_NUMBER() OVER (PARTITION BY source, fingerprint ${ranking}) AS nth,
+          ROW_NUMBER() OVER (PARTITION BY source, fingerprint, COALESCE(allowed_countries, '') ${ranking}) AS nth_same
+        FROM jobs WHERE canonical = 1 AND workplace = 'remote'
+      )
+      UPDATE jobs SET remote_repeat = CASE WHEN ranked.nth_same > 1 THEN 2 ELSE 1 END
+      FROM ranked WHERE ranked.id = jobs.id AND ranked.nth > 1`);
+  })();
 }
 
 const TIER_THRESHOLDS: [string, number][] = [

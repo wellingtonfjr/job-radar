@@ -169,6 +169,9 @@ export function buildJobFilter(query: JobsQuery, now: Date): { where: string; pa
     params.source = query.source;
   } else {
     conditions.push("j.canonical = 1");
+    // One card per remote role a company repeats per city. With a country
+    // picked, the copies open to other sets of countries count too.
+    conditions.push(query.country ? "j.remote_repeat < 2" : "j.remote_repeat = 0");
   }
 
   if (query.q) {
