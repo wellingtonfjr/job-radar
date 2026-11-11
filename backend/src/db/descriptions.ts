@@ -81,8 +81,11 @@ export function compactOnce(
   db.pragma("wal_checkpoint(TRUNCATE)");
   const size = fs.statSync(dbPath).size;
   const free = freeBytes(path.dirname(dbPath));
-  // The rewrite goes through the WAL first: up to the database's size, plus a margin.
-  const needed = size + 64 * 1024 * 1024;
+  // The rewrite goes through the WAL first: every page still in use (free
+  // pages aren't copied), plus a margin.
+  const pageSize = db.pragma("page_size", { simple: true }) as number;
+  const inUse = ((db.pragma("page_count", { simple: true }) as number) - (db.pragma("freelist_count", { simple: true }) as number)) * pageSize;
+  const needed = inUse + 64 * 1024 * 1024;
   if (free < needed) {
     log(`[db] not compacting: ${mb(free)} free, needs ${mb(needed)}; will retry on the next start`);
     return false;

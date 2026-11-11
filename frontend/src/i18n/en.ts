@@ -158,7 +158,7 @@ export const en = {
   },
   footer: {
     about:
-      'Roles come straight from the companies’ career pages and are re-checked, so a role disappears as soon as the company takes it down. Public job boards fill the gaps and always link back to the original posting.',
+      'Tech roles only: development, data, DevOps, AI, QA, security, product and design. They come straight from the companies’ career pages and are re-checked, so a role disappears as soon as the company takes it down. Public job boards fill the gaps and always link back to the original posting.',
     analytics: 'We count visits and clicks anonymously (no cookies, no accounts, never what you type in search) to learn which filters and roles are useful.',
     precision: (percent: string) => `${percent} of sampled roles verified open last week`,
   },

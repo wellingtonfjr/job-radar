@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Db } from "../db/index.js";
-import { CATEGORIES } from "../domain/job.js";
+import { CATEGORIES, isTechCategory } from "../domain/job.js";
 import { SOURCES } from "../sources/index.js";
 
 interface RunRow {
@@ -114,7 +114,8 @@ export function getStats(db: Db, now: Date) {
       newLast7Days: totals.newLast7Days ?? 0,
       postedToday: totals.postedToday ?? 0,
     },
-    categories: CATEGORIES.map((c) => ({ ...c, count: categoryCounts.get(c.id) ?? 0 })),
+    // The site is tech-only: other categories have no roles and aren't offered.
+    categories: CATEGORIES.filter((c) => isTechCategory(c.id)).map((c) => ({ ...c, count: categoryCounts.get(c.id) ?? 0 })),
     skills,
     countries,
     tiers: Object.fromEntries(tierCounts.map((t) => [t.tier, t.n])),

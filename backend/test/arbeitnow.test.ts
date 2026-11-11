@@ -139,13 +139,13 @@ describe("Arbeitnow filter", () => {
     expect(outcome.results[0]?.jobs.map((j) => j.externalId)).toEqual(["keep"]);
   });
 
-  it("closes stored roles the filter now drops, without tripping the drop guard", async () => {
+  it("never stores the roles the filter drops, even when another adapter lists them", async () => {
     const db = openDb(":memory:");
     const onsite = slugs("s", 20).map((slug) => job(slug, { title: "Account Executive", remote: false, location: "Berlin", description: EN }));
     const remote = ["r0", "r1"].map((slug) => job(slug, { description: EN }));
     const fetchPage = async (): Promise<ArbeitnowResponse> => ({ data: [...onsite, ...remote], links: { next: null } });
 
-    // Before the filter existed, every role in the feed was stored.
+    // Even without the adapter's filter, ingestion keeps tech roles only.
     const unfiltered: SourceAdapter = {
       ...createArbeitnowSource({ fetchPage, pageDelayMs: 0 }),
       fetchJobs: async () => ({
@@ -154,16 +154,15 @@ describe("Arbeitnow filter", () => {
       }),
     };
     await runIngestion(db, [unfiltered], { staleAfterDays: 30, now: () => T0 });
-    expect(openIds(db)).toHaveLength(22);
+    expect(openIds(db)).toEqual(["r0", "r1"]);
 
-    // The first filtered run keeps 2 of 22, far below the guard's 50%, but the
-    // other 20 were listed and filtered on purpose, so they close.
+    // The filtered adapter keeps the same 2, and nothing trips the drop guard.
     const [summary] = await runIngestion(db, [createArbeitnowSource({ fetchPage, pageDelayMs: 0 })], {
       staleAfterDays: 30,
       force: true,
       now: () => new Date(T0.getTime() + 3_600_000),
     });
-    expect(summary).toMatchObject({ status: "ok", fetched: 2, closed: 20, errors: [] });
+    expect(summary).toMatchObject({ status: "ok", fetched: 2, closed: 0, errors: [] });
     expect(openIds(db)).toEqual(["r0", "r1"]);
   });
 

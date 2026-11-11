@@ -107,7 +107,7 @@ describe("resolveApplyLinks", () => {
     await ingest(fakeSource("himalayas", "aggregator"), [
       { externalId: "1", company: "Acme", descriptionHtml: `<a href="https://jobs.lever.co/acme/0b9c6d4e-1234-4abc-9def-0123456789ab">Apply</a>` },
       { externalId: "3", company: "Globex", title: "Platform Engineer (Remote)" },
-      { externalId: "4", company: "Hooli", title: "Unknown Role" },
+      { externalId: "4", company: "Hooli", title: "Unknown Engineer" },
     ]);
 
     const summary = await resolveApplyLinks(db, net, { now: NOW });
@@ -132,7 +132,7 @@ describe("resolveApplyLinks", () => {
     // Same opening on a board, shown via the `source` filter (non-canonical) — plus a dead link.
     await ingest(fakeSource("agg", "aggregator"), [
       { externalId: "1", title: "Data Engineer" },
-      { externalId: "2", company: "Hooli", title: "Recruiter", descriptionHtml: `<a href="${dead}">x</a>` },
+      { externalId: "2", company: "Hooli", title: "Site Reliability Engineer", descriptionHtml: `<a href="${dead}">x</a>` },
     ]);
     db.exec("UPDATE jobs SET canonical = 1");
     const { net } = fakeNet({ dead: [dead] });
@@ -145,9 +145,9 @@ describe("resolveApplyLinks", () => {
   it("caches board discovery per company and respects the budget", async () => {
     const { net, calls } = fakeNet();
     await ingest(fakeSource("agg", "aggregator"), [
-      { externalId: "1", company: "Acme", title: "A" },
-      { externalId: "2", company: "Acme", title: "B" },
-      { externalId: "3", company: "Globex", title: "C" },
+      { externalId: "1", company: "Acme", title: "Engineer A" },
+      { externalId: "2", company: "Acme", title: "Engineer B" },
+      { externalId: "3", company: "Globex", title: "Engineer C" },
     ]);
 
     const first = await resolveApplyLinks(db, net, { now: NOW, discoveryBudget: 1 });

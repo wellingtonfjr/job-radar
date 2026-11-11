@@ -34,7 +34,7 @@ async function seed(hoursAgo = 2): Promise<Db> {
   const db = openDb(":memory:");
   const board = fakeSource("himalayas", "aggregator");
   board.respond({
-    results: [{ feed: "all", complete: false, jobs: ["1", "2", "3", "4"].map((id) => rawJob({ externalId: id, title: `Role ${id}`, company: `Co ${id}` })) }],
+    results: [{ feed: "all", complete: false, jobs: ["1", "2", "3", "4"].map((id) => rawJob({ externalId: id, title: `Engineer ${id}`, company: `Co ${id}` })) }],
     errors: [],
   });
   await runIngestion(db, [board], { staleAfterDays: 30, now: () => new Date(Date.now() - hoursAgo * 3_600_000) });

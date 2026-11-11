@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { openDb, type Db } from "../src/db/index.js";
-import { deleteAgedPostings, discoveredBoards, pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
+import { deleteAgedPostings, deleteOffTopicRoles, discoveredBoards, pruneOldRows, runIngestion } from "../src/ingestion/pipeline.js";
 import { fetchBoards } from "../src/sources/boards.js";
 import type { CompanyBoard } from "../src/sources/companies.js";
 import type { FetchOutcome, SourceAdapter } from "../src/sources/types.js";
@@ -39,7 +39,7 @@ describe("runIngestion", () => {
 
   it("doesn't trust a complete feed that suddenly lists under half of its open jobs", async () => {
     const ats = fakeSource("ats");
-    const jobs = Array.from({ length: 20 }, (_, i) => rawJob({ externalId: String(i), title: `Role ${i}` }));
+    const jobs = Array.from({ length: 20 }, (_, i) => rawJob({ externalId: String(i), title: `Engineer ${i}` }));
     ats.respond({ results: [{ feed: "acme", complete: true, jobs }], errors: [] });
     await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
 
@@ -166,6 +166,47 @@ describe("runIngestion", () => {
     expect(openIds(db)).toHaveLength(12);
   });
 
+  it("keeps tech roles only: skips the rest, deletes stored ones without counting them as closed", async () => {
+    const ats = fakeSource("ats");
+    const jobs = [
+      ...Array.from({ length: 6 }, (_, i) => rawJob({ externalId: `e${i}`, title: `Backend Engineer ${i}` })),
+      rawJob({ externalId: "ae", title: "Account Executive" }),
+      rawJob({ externalId: "hr", title: "Recruiter" }),
+    ];
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs }], errors: [] });
+    const [first] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    expect(first).toMatchObject({ status: "ok", fetched: 6, inserted: 6 });
+    expect(openIds(db)).toHaveLength(6);
+
+    // A role stored before the rule (or reclassified since) goes at the next read of its feed.
+    db.prepare("UPDATE jobs SET category = 'sales' WHERE id = 'ats:e0'").run();
+    db.prepare("UPDATE jobs SET category = 'finance' WHERE id = 'ats:e1'").run();
+    // ...and wherever it is, the cleanup deletes it in batches.
+    const agg = fakeSource("agg", "aggregator");
+    agg.respond({ results: [{ feed: "all", complete: false, jobs: [rawJob({ externalId: "x", title: "Frontend Developer" })] }], errors: [] });
+    await runIngestion(db, [agg], { staleAfterDays: 30, now: () => T0 });
+    db.prepare("UPDATE jobs SET category = 'healthcare' WHERE id = 'agg:x'").run();
+
+    const [second] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    // e0 and e1 are re-read as tech roles (their titles say so) and kept; nothing closes.
+    expect(second).toMatchObject({ status: "ok", fetched: 6, closed: 0 });
+    expect(await deleteOffTopicRoles(db, { batchSize: 1, pauseMs: 0 })).toBe(1);
+    expect(openIds(db)).not.toContain("agg:x");
+    expect(await deleteOffTopicRoles(db)).toBe(0);
+  });
+
+  it("deletes a feed's stored off-topic roles during ingestion, counted apart from closures", async () => {
+    const ats = fakeSource("ats");
+    const jobs = Array.from({ length: 4 }, (_, i) => rawJob({ externalId: String(i), title: `Data Engineer ${i}` }));
+    ats.respond({ results: [{ feed: "acme", complete: true, jobs }], errors: [] });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    // Stored under an older classification as non-tech, and no longer in the feed.
+    db.prepare("INSERT INTO jobs (id, source, feed, external_id, title, company, company_key, url, workplace, category, search_text, fingerprint, source_rank, first_seen_at, last_seen_at) VALUES ('ats:old', 'ats', 'acme', 'old', 'Sales Lead', 'Acme', 'acme', 'https://e.x/old', 'remote', 'sales', 's', 'f-old', 0, ?, ?)").run(T0.toISOString(), T0.toISOString());
+    const [run] = await runIngestion(db, [ats], { staleAfterDays: 30, now: () => hoursLater(2) });
+    expect(run).toMatchObject({ status: "ok", closed: 0, offTopic: 1 });
+    expect(openIds(db)).toHaveLength(4);
+  });
+
   it("runs due sources one at a time, never two at once", async () => {
     let inFlight = 0;
     let maxInFlight = 0;
@@ -220,7 +261,7 @@ describe("runIngestion", () => {
   it("retires expired jobs and jobs unseen for too long", async () => {
     const agg = fakeSource("agg", "aggregator");
     agg.respond({
-      results: [{ feed: "all", complete: false, jobs: [rawJob({ externalId: "old" }), rawJob({ externalId: "exp", title: "X", expiresAt: hoursLater(1).toISOString() })] }],
+      results: [{ feed: "all", complete: false, jobs: [rawJob({ externalId: "old" }), rawJob({ externalId: "exp", title: "X Engineer", expiresAt: hoursLater(1).toISOString() })] }],
       errors: [],
     });
     await runIngestion(db, [agg], { staleAfterDays: 30, now: () => T0 });
@@ -369,7 +410,7 @@ describe("runIngestion", () => {
     const ats = fakeSource("ats");
     const daysBefore = (d: number) => new Date(T0.getTime() - d * 86_400_000).toISOString();
     // 20 roles: 15 published 50 days ago, 5 published 5 days ago.
-    const jobs = Array.from({ length: 20 }, (_, i) => rawJob({ externalId: String(i), title: `Role ${i}`, postedAt: daysBefore(i < 15 ? 50 : 5) }));
+    const jobs = Array.from({ length: 20 }, (_, i) => rawJob({ externalId: String(i), title: `Engineer ${i}`, postedAt: daysBefore(i < 15 ? 50 : 5) }));
     ats.respond({ results: [{ feed: "acme", complete: true, jobs }], errors: [] });
     await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
     expect(openIds(db)).toHaveLength(20);
@@ -391,9 +432,9 @@ describe("runIngestion", () => {
           feed: "all",
           complete: false,
           jobs: [
-            ...Array.from({ length: 5 }, (_, i) => rawJob({ externalId: `a${i}`, title: `Aging ${i}`, postedAt: daysBefore(50), descriptionText: "Old." })),
-            rawJob({ externalId: "undated", title: "Undated", postedAt: null }),
-            rawJob({ externalId: "fresh", title: "Fresh", postedAt: daysBefore(1) }),
+            ...Array.from({ length: 5 }, (_, i) => rawJob({ externalId: `a${i}`, title: `Aging Engineer ${i}`, postedAt: daysBefore(50), descriptionText: "Old." })),
+            rawJob({ externalId: "undated", title: "Undated Engineer", postedAt: null }),
+            rawJob({ externalId: "fresh", title: "Fresh Engineer", postedAt: daysBefore(1) }),
           ],
         },
       ],
@@ -456,7 +497,7 @@ describe("pruneOldRows", () => {
     const ats = fakeSource("ats");
     const feed = (...ids: string[]) => ({
       // Undated, so only the closed-age rule applies (not the posting-age one).
-      results: [{ feed: "acme", complete: true, jobs: ids.map((id) => rawJob({ externalId: id, title: `Role ${id}`, postedAt: null })) }],
+      results: [{ feed: "acme", complete: true, jobs: ids.map((id) => rawJob({ externalId: id, title: `Engineer ${id}`, postedAt: null })) }],
       errors: [],
     });
     ats.respond(feed("old", "recent", "open"));
