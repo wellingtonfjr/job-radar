@@ -13,6 +13,14 @@ import { fakeSource, rawJob } from "./helpers.js";
 const SITE = "https://jobs.example.com";
 const DEFAULT_TITLE = "<title>job-radar · Open roles, verified daily</title>";
 const DEFAULT_DESCRIPTION = '<meta name="description" content="Real, current job openings." />';
+// The home page's own tags, as in frontend/index.html.
+const HOME_TAGS = [
+  '<link rel="canonical" href="https://home.example/" />',
+  '<meta property="og:title" content="Home title" />',
+  '<meta property="og:url" content="https://home.example/" />',
+  '<meta property="og:image" content="https://home.example/og-cover.png" />',
+  '<meta name="twitter:card" content="summary_large_image" />',
+];
 
 describe("SEO and link previews", () => {
   let db: Db;
@@ -52,9 +60,10 @@ describe("SEO and link previews", () => {
     );
 
     dist = fs.mkdtempSync(path.join(os.tmpdir(), "job-radar-seo-"));
+    fs.writeFileSync(path.join(dist, "og-cover.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     fs.writeFileSync(
       path.join(dist, "index.html"),
-      `<!doctype html>\n<html>\n  <head>\n    ${DEFAULT_DESCRIPTION}\n    ${DEFAULT_TITLE}\n  </head>\n  <body><div id="root"></div></body>\n</html>`,
+      `<!doctype html>\n<html>\n  <head>\n    ${DEFAULT_DESCRIPTION}\n    ${HOME_TAGS.join("\n    ")}\n    ${DEFAULT_TITLE}\n  </head>\n  <body><div id="root"></div></body>\n</html>`,
     );
     server = createApp(db, { staticDir: dist, siteUrl: SITE }).listen(0);
     await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -129,8 +138,17 @@ describe("SEO and link previews", () => {
     expect(html).toContain(`<meta property="og:url" content="${url}" />`);
     expect(html).toContain('<meta property="og:type" content="website" />');
     expect(html).toContain('<meta property="og:site_name" content="job-radar" />');
-    expect(html).toContain('<meta name="twitter:card" content="summary" />');
-    // The defaults are replaced, not duplicated, and the app still mounts.
+    expect(html).toContain(`<meta property="og:image" content="${SITE}/og-cover.png" />`);
+    expect(html).toContain('<meta property="og:image:width" content="1200" />');
+    expect(html).toContain('<meta property="og:image:height" content="630" />');
+    expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+    // The home page's tags are replaced, not duplicated, and the app still mounts.
+    expect(html).not.toContain("home.example");
+    expect(html).not.toContain("Home title");
+    expect(html.match(/og:title/g)).toHaveLength(1);
+    expect(html.match(/og:image"/g)).toHaveLength(1);
+    expect(html.match(/twitter:card/g)).toHaveLength(1);
+    expect(html.match(/rel="canonical"/g)).toHaveLength(1);
     expect(html).not.toContain(DEFAULT_TITLE);
     expect(html).not.toContain(DEFAULT_DESCRIPTION);
     expect(html.match(/<title>/g)).toHaveLength(1);
@@ -148,8 +166,13 @@ describe("SEO and link previews", () => {
     const html = await res.text();
     expect(html).toContain(DEFAULT_TITLE);
     expect(html).toContain(DEFAULT_DESCRIPTION);
-    expect(html).not.toContain("og:title");
-    expect(html).not.toContain("canonical");
+    for (const tag of HOME_TAGS) expect(html).toContain(tag);
+  });
+
+  it("serves the cover image as image/png", async () => {
+    const res = await fetch(`${base}/og-cover.png`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
   });
 
   it("escapes third-party text inserted into the page", async () => {

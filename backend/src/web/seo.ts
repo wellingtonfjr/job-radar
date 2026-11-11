@@ -122,12 +122,20 @@ export function renderJobPage(template: string, job: JobMeta, siteUrl: string): 
     `<meta property="og:title" content="${escapeHtml(title)}" />`,
     `<meta property="og:description" content="${escapeHtml(description)}" />`,
     `<meta property="og:url" content="${escapeHtml(url)}" />`,
-    `<meta name="twitter:card" content="summary" />`,
+    `<meta property="og:image" content="${escapeHtml(`${siteUrl}/og-cover.png`)}" />`,
+    `<meta property="og:image:type" content="image/png" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:image:alt" content="job-radar: real, current tech jobs straight from employers" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
   ].join("\n    ");
 
   // Functions as replacements, so "$&" etc. in the inserted text stay literal.
   return template
     .replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${escapeHtml(title)}</title>`)
-    .replace(/[ \t]*<meta\s+name="description"[^>]*>\n?/i, "")
+    // The template's own (home page) description, canonical link and
+    // Open Graph/Twitter tags go, so the role's aren't duplicated.
+    .replace(/[ \t]*<meta\s+(?:name|property)="(?:description|og:[^"]*|twitter:[^"]*)"[^>]*>\n?/gi, "")
+    .replace(/[ \t]*<link\s+rel="canonical"[^>]*>\n?/gi, "")
     .replace(/<\/head>/i, () => `  ${tags}\n  </head>`);
 }

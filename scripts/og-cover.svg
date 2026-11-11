@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#3d5afe" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#3d5afe" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0a0e15"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <!-- radar, same mark as radar.svg -->
+  <g transform="translate(870 315)" fill="none" stroke="#7c8cff">
+    <circle r="250" stroke-opacity=".18" stroke-width="2"/>
+    <circle r="170" stroke-opacity=".28" stroke-width="2"/>
+    <circle r="90" stroke-opacity=".45" stroke-width="2"/>
+    <path d="M0 0 L0 -250 A250 250 0 0 1 216 -125 Z" fill="#3d5afe" fill-opacity=".45" stroke="none"/>
+    <circle r="9" fill="#ffffff" stroke="none"/>
+    <circle cx="140" cy="-120" r="11" fill="#ffd84d" stroke="none"/>
+    <circle cx="-110" cy="95" r="8" fill="#12b76a" stroke="none"/>
+    <circle cx="-40" cy="200" r="7" fill="#7c8cff" stroke="none"/>
+  </g>
+  <g font-family="Inter, Helvetica Neue, Helvetica, Arial, sans-serif">
+    <rect x="80" y="96" width="64" height="64" rx="16" fill="#111723" stroke="#323d50" stroke-width="2"/>
+    <circle cx="112" cy="128" r="20" fill="none" stroke="#7c8cff" stroke-opacity=".5" stroke-width="3"/>
+    <path d="M112 128 L112 106 A22 22 0 0 1 131 117 Z" fill="#3d5afe" fill-opacity=".7"/>
+    <circle cx="112" cy="128" r="4" fill="#fff"/>
+    <text x="164" y="142" font-size="40" font-weight="700" fill="#e8ecf4">job-radar</text>
+    <text x="80" y="300" font-size="68" font-weight="800" fill="#e8ecf4" letter-spacing="-1.5">Real, current tech jobs</text>
+    <text x="80" y="380" font-size="68" font-weight="800" fill="#7c8cff" letter-spacing="-1.5">straight from employers</text>
+    <text x="80" y="460" font-size="34" font-weight="500" fill="#b9c1d0">Open roles pulled from career pages and verified daily.</text>
+    <text x="80" y="560" font-size="28" font-weight="600" fill="#8a94a7" font-family="ui-monospace, Menlo, monospace">radar-de-vagas.fly.dev</text>
+  </g>
+</svg>
