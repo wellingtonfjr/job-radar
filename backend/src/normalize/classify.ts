@@ -32,13 +32,19 @@ const CATEGORY_RULES: Rule<CategoryId>[] = [
   // Agile and technical delivery roles sit with product teams.
   [/\b(scrum master|agile coach|agilista|technical project manager|it project manager|delivery manager)\b/i, "product"],
   [/\b(project manager|gerente de projetos?|pmo|projet manager)\b/i, "operations"],
-  // Technical customer-facing engineers are tech roles; consultants aren't.
-  [/\b(sales engineer|solutions? (?:engineer|architect)|pre-?sales engineer|customer engineer|forward deployed engineer)\b/i, "software-development"],
-  [/\b(solutions? consultant|pre-?sales)\b/i, "sales"],
+  // Architects and forward-deployed engineers build things; sales-side
+  // engineers (sales, solutions, pre-sales, customer) mostly don't code.
+  [/\b(solutions? architects?|forward deployed engineers?)\b/i, "software-development"],
+  [/\b(sales engineers?|solutions? (?:engineers?|consultants?)|pre-?sales|customer engineers?|business developers?)\b/i, "sales"],
+  // German compounds the generic rule below can't see.
+  [/\b(software(?:ingenieur|architekt|entwicklung)\w*|hardwareentwickler\w*)/i, "software-development"],
+  [/\bsoftwaretester\w*/i, "qa"],
+  [/\bnetzwerk(?:ingenieur|administrator)\w*/i, "devops"],
   [/\b(customer success engineer)\b/i, "customer-support"],
   [/\b(support engineer|application support|production support)\b/i, "devops"],
   [/\b(technical support)\b/i, "customer-support"],
-  [/\b(software|developer|entwickler(in)?|(?:software|anwendungs|web|frontend|backend|fullstack|full-stack|java|php|python|app|mobile)-?entwickler(?:\*in|in)?|\w*informatiker(?:\*in|in)?|engineer(ing)?|programmer|frontend|front-end|front end|backend|back-end|back end|full[- ]?stack|mobile|ios|android|web developer|architect|cto|tech lead|swe|golang|python|java|javascript|typescript|react|ruby|php|\.net|rust|scala|elixir|salesforce developer|blockchain|embedded|firmware|game developer|desenvolvedor(?:a)?|programador(?:a)?|engenheir[oa](?:\(a\))? de software|engenharia de software|analista de sistemas|analista desenvolvedor|arquitet[oa](?:\(a\))?|dev|tecnologia|lider tecnico|tech manager|salesforce|sistemas|desenvolvimento(?!\s+(?:de\s+)?(?:negocios|parcerias|pessoas|jornadas|humano))|sap|erp|dynamics 365|power platform|pl\/sql|analista funcional|requisitos|aplicacoes)\b/i, "software-development"],
+  [/\b(software|entwickler(in)?|(?:software|anwendungs|web|frontend|backend|fullstack|full-stack|java|php|python|app|mobile)-?entwickler(?:\*in|in)?|\w*informatiker(?:\*in|in)?|engineers?|engineering|programmers?|frontend|front-end|front end|backend|back-end|back end|full[- ]?stack|mobile|ios|android|web developer|developers?|architects?|cto|tech lead|swe|golang|python|java|javascript|typescript|react|ruby|php|\.net|rust|scala|elixir|salesforce developer|blockchain|embedded|firmware|game developer|desenvolvedor(?:a)?|programador(?:a)?|engenheir[oa](?:\(a\))? de software|engenharia de software|analista de sistemas|analista desenvolvedor|arquitet[oa](?:\(a\))?|dev|tecnologia|lider tecnico|tech manager|salesforce|sistemas|desenvolvimento(?!\s+(?:de\s+)?(?:negocios|parcerias|pessoas|jornadas|humano))|sap|erp|dynamics 365|power platform|pl\/sql|analista funcional|requisitos|aplicacoes)\b/i, "software-development"],
+  [/(?:^|\W)\.net\b/i, "software-development"],
   [/\b(customer (support|service|success|experience|care)|support (agent|specialist|engineer|representative)|technical support|client success|call center|customer happiness|cx|support|atendimento|suporte|sucesso do cliente|relacionamento com (?:o )?cliente|sac|experiencia (?:do )?cliente|ouvidoria|implantacao|onboarding|zendesk)\b/i, "customer-support"],
   [/\b(marketing|seo|sem|content marketing|social media|brand|communications|pr manager|public relations|demand gen|community manager|performance marketing|copywriter|redes sociais|midias sociais|trafego pago|trafego|comunicacao|branding|growth (?:lead|manager|marketing|analyst|hacker)|crm|martech|marketplace|inbound|performance)\b/i, "marketing"],
   [/\b(account executive|sales|verkauf|vertrieb|\w*verkaufs\w*|business development|bdr|sdr|account manager|partnerships?|revenue|pre-?sales|solutions? consultant|solutions? engineer|go-to-market|gtm|channel manager|key account|vendas|vendedor(?:a)?|comercial|executiv[oa](?:\(a\))? de (?:contas|vendas)|executiv[oa] (?:de )?canais|canais|receita|pre-vendas|closer|televendas|negocios|parcerias?|revops|gerente de contas|b2b|bid manager|enablement|loja)\b/i, "sales"],
