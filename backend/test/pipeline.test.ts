@@ -624,3 +624,26 @@ describe("remote roles repeated per city", () => {
     }
   });
 });
+
+describe("remote repeat representative", () => {
+  it("shows the copy open to everyone, else the newest", async () => {
+    const db = openDb(":memory:");
+    const ats = fakeSource("ats");
+    const copy = (id: string, locations: string[], postedAt: string) =>
+      rawJob({ externalId: id, title: "Staff Software Engineer", company: "Globex", locations, postedAt });
+    ats.respond({
+      results: [
+        {
+          feed: "globex",
+          complete: true,
+          jobs: [copy("us-old", ["Remote - United States"], "2026-10-01T00:00:00Z"), copy("us-new", ["Remote - United States"], "2026-10-12T00:00:00Z"), copy("world", ["Remote - Worldwide"], "2026-09-30T00:00:00Z")],
+        },
+      ],
+      errors: [],
+    });
+    await runIngestion(db, [ats], { staleAfterDays: 30, now: () => T0 });
+    const flags = Object.fromEntries((db.prepare("SELECT id, remote_repeat FROM jobs").all() as { id: string; remote_repeat: number }[]).map((r) => [r.id, r.remote_repeat]));
+    // Worldwide wins the default listing; among US copies the newest stays for a US search.
+    expect(flags).toEqual({ "ats:world": 0, "ats:us-new": 1, "ats:us-old": 2 });
+  });
+});

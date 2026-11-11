@@ -118,7 +118,7 @@ export function validateSalary(salary: Salary | null | undefined): Salary | null
   if (min !== null && max !== null && min > max) [min, max] = [max, min];
   const currency = salary.currency?.toUpperCase() ?? null;
   // Typos in postings ("$92,000 – $11,500,000"): a bound over the yearly
-  // ceiling goes, and so does a maximum more than 4x the minimum.
+  // ceiling goes, and so does a maximum more than 6x the minimum.
   const tooHigh = (value: number | null) => value !== null && (annualUsd({ min: value, max: null, currency, period: salary.period }) ?? 0) > MAX_PLAUSIBLE_USD_YEAR;
   if (tooHigh(min)) min = null;
   if (tooHigh(max)) max = null;
@@ -129,8 +129,8 @@ export function validateSalary(salary: Salary | null | undefined): Salary | null
 
 /** Above this (USD per year) a stated salary is a typo, not an offer. */
 const MAX_PLAUSIBLE_USD_YEAR = 3_000_000;
-/** Real ranges stay within a few times their minimum. */
-const MAX_RANGE_RATIO = 4;
+/** Real ranges stay within a few times their minimum (OTE and hourly ranges can reach ~5x). */
+const MAX_RANGE_RATIO = 6;
 
 export function annualUsd(salary: Salary | null): number | null {
   if (!salary) return null;

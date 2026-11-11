@@ -388,8 +388,10 @@ describe("validateSalary", () => {
   it("drops implausible bounds from typos, keeps real ranges", () => {
     // "$92,000 – $11,500,000": the maximum is a typo.
     expect(validateSalary({ min: 92_000, max: 11_500_000, currency: "USD", period: "year" })).toEqual({ min: 92_000, max: null, currency: "USD", period: "year" });
-    // A range over 4x its minimum keeps only the minimum.
-    expect(validateSalary({ min: 50_000, max: 250_000, currency: "usd", period: "year" })).toEqual({ min: 50_000, max: null, currency: "USD", period: "year" });
+    // A range over 6x its minimum keeps only the minimum; wide real ones (OTE, hourly) stay.
+    expect(validateSalary({ min: 50_000, max: 350_000, currency: "usd", period: "year" })).toEqual({ min: 50_000, max: null, currency: "USD", period: "year" });
+    expect(validateSalary({ min: 100_000, max: 500_000, currency: "USD", period: "year" })).toEqual({ min: 100_000, max: 500_000, currency: "USD", period: "year" });
+    expect(validateSalary({ min: 13, max: 54, currency: "USD", period: "hour" })).toEqual({ min: 13, max: 54, currency: "USD", period: "hour" });
     // Hourly ceilings are judged per year: $2,000/h is over $3M a year.
     expect(validateSalary({ min: 2_000, max: null, currency: "USD", period: "hour" })).toBeNull();
     // Normal ranges are untouched.

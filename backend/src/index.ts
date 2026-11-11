@@ -59,7 +59,9 @@ moveDescriptions(db)
   .then(async () => {
     const offTopic = await deleteOffTopicRoles(db);
     logOffTopic(offTopic);
-    if (offTopic > 0) recomputeCanonical(db, new Date());
+    // Always once at start: a new release may list roles differently (and
+    // the next ingestion can be hours away).
+    recomputeCanonical(db, new Date());
   })
   .catch((err: unknown) => console.error("[db] deleting off-topic roles failed:", err))
   .then(() => compactOnce(db, config.dbPath))
