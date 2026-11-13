@@ -24,6 +24,20 @@ describe('analytics helpers', () => {
     expect(analytics.analyticsEnabled()).toBe(false);
   });
 
+  it('sends each distinct error once, and at most 10 per page', () => {
+    expect(analytics.shouldSend(new Error('loop'))).toBe(true);
+    expect(analytics.shouldSend(new Error('loop'))).toBe(false);
+    for (let i = 0; i < 20; i++) analytics.shouldSend(new Error(`e${i}`));
+    expect(analytics.shouldSend(new Error('another'))).toBe(false);
+  });
+
+  it('strips the search text everywhere, including inside exceptions', () => {
+    const origin = 'https://radar-de-vagas.fly.dev';
+    expect(
+      analytics.stripSearchTextDeep({ $current_url: `${origin}/?q=jane`, $exception_list: [{ value: `failed ${origin}/?q=jane&x=1` }], n: 1 }, origin),
+    ).toEqual({ $current_url: `${origin}/`, $exception_list: [{ value: `failed ${origin}/?x=1` }], n: 1 });
+  });
+
   it('ignores errors when analytics is off', () => {
     expect(() => analytics.captureError(new Error('boom'))).not.toThrow();
     expect(() => analytics.captureError('a string', { source: 'test' })).not.toThrow();

@@ -31,7 +31,8 @@ export function setErrorReporter(next: ErrorReporter | null): void {
 export function createPostHogReporter({ key, host }: { key: string; host: string }): ErrorReporter {
   const client = new PostHog(key, { host, flushAt: 1, flushInterval: 5_000, disableGeoip: true });
   return {
-    capture: (error, properties) => client.captureException(error, SERVER_DISTINCT_ID, properties),
+    // No person profile for the server: its errors aren't a visitor.
+    capture: (error, properties) => client.captureException(error, SERVER_DISTINCT_ID, { ...properties, $process_person_profile: false }),
     flush: () => client.flush(),
   };
 }
@@ -52,6 +53,11 @@ export function reportError(area: ErrorArea, message: string, error: unknown, ex
   }
 }
 
-export function flushErrors(): Promise<void> {
-  return reporter.flush().catch(() => {});
+/**
+ * Sends what's queued, giving up after `timeoutMs`: with PostHog
+ * unreachable a flush retries for ~17 s, longer than Fly waits for a
+ * stopping machine, which would leave a crashed process serving.
+ */
+export function flushErrors(timeoutMs = 2_000): Promise<void> {
+  return Promise.race([reporter.flush().catch(() => {}), new Promise<void>((resolve) => setTimeout(resolve, timeoutMs).unref())]);
 }
