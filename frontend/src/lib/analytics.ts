@@ -37,10 +37,14 @@ export function stripSearchText(value: string, origin = window.location.origin):
   if (!value.includes(origin)) return value;
   const ownUrl = new RegExp(`${origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\s"'<>]*`, 'g');
   return value.replace(ownUrl, (match) => {
-    const url = new URL(match);
-    if (!url.searchParams.has('q')) return match;
-    url.searchParams.delete('q');
-    return url.toString();
+    try {
+      const url = new URL(match);
+      if (!url.searchParams.has('q')) return match;
+      url.searchParams.delete('q');
+      return url.toString();
+    } catch {
+      return match; // Not a parseable URL, so no query to strip.
+    }
   });
 }
 
@@ -123,7 +127,12 @@ const sentErrors = new Set<string>();
  * event budget the analytics need.
  */
 export function shouldSend(error: unknown): boolean {
-  const key = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  let key: string;
+  try {
+    key = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  } catch {
+    key = 'unprintable error'; // e.g. an object with no prototype
+  }
   if (sentErrors.has(key) || sentErrors.size >= MAX_ERRORS_PER_PAGE) return false;
   sentErrors.add(key);
   return true;
