@@ -4,6 +4,7 @@ import { checkRole } from "../accuracy/liveness.js";
 import { DEV_REPORT_IP_SALT, hashIp, recordReport } from "../accuracy/reports.js";
 import type { AuditNet } from "../accuracy/verify.js";
 import { DEFAULT_REPORTS_PER_HOUR } from "../config.js";
+import { reportError } from "../errors.js";
 import type { Db } from "../db/index.js";
 
 /** Roles waiting for a check at most; reports beyond it are still recorded. */
@@ -32,7 +33,7 @@ export function createReportQueue(db: Db, net: AuditNet, now: () => Date = () =>
       if (verdict && verdict !== "open") setVerdict.run(verdict, jobId);
       console.log(`[reports] checked ${jobId}: ${verdict ?? "not checked"}`);
     } catch (err) {
-      console.error(`[reports] check of ${jobId} failed:`, err);
+      reportError("reports", `check of ${jobId} failed`, err);
     } finally {
       pending.delete(jobId);
     }

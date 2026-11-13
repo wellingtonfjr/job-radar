@@ -10,8 +10,8 @@ import { countActiveFilters, type Filters } from './filters';
  * - Cookieless: nothing is stored in the browser; PostHog counts unique
  *   visitors with a daily server-side hash (the project must have
  *   cookieless mode enabled in its settings, or events are dropped).
- * - Only the events below. No autocapture, session replay, surveys, heatmaps
- *   or external scripts.
+ * - Only the events below, plus JavaScript errors (see captureError). No
+ *   autocapture, session replay, surveys, heatmaps or external scripts.
  * - The search text never leaves the browser: `q` is stripped from every URL
  *   and events only carry its length.
  * - Do Not Track is respected.
@@ -32,13 +32,30 @@ export function analyticsEnabled(): boolean {
   return Boolean(KEY) && import.meta.env.PROD;
 }
 
-/** Removes the search text from one of our own URLs; other strings pass through. */
+/** Removes the search text from our own URLs, wherever they appear in the string. */
 export function stripSearchText(value: string, origin = window.location.origin): string {
-  if (!value.startsWith(origin)) return value;
-  const url = new URL(value);
-  if (!url.searchParams.has('q')) return value;
-  url.searchParams.delete('q');
-  return url.toString();
+  if (!value.includes(origin)) return value;
+  const ownUrl = new RegExp(`${origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[^\\s"'<>]*`, 'g');
+  return value.replace(ownUrl, (match) => {
+    try {
+      const url = new URL(match);
+      if (!url.searchParams.has('q')) return match;
+      url.searchParams.delete('q');
+      return url.toString();
+    } catch {
+      return match; // Not a parseable URL, so no query to strip.
+    }
+  });
+}
+
+/** stripSearchText on every string, however nested (e.g. inside $exception_list). */
+export function stripSearchTextDeep(value: unknown, origin = window.location.origin): unknown {
+  if (typeof value === 'string') return stripSearchText(value, origin);
+  if (Array.isArray(value)) return value.map((v) => stripSearchTextDeep(v, origin));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, stripSearchTextDeep(v, origin)]));
+  }
+  return value;
 }
 
 export function initAnalytics(): void {
@@ -68,18 +85,57 @@ export function initAnalytics(): void {
     disable_external_dependency_loading: true,
     before_send: (event) => {
       if (!event) return null;
-      for (const [key, value] of Object.entries(event.properties)) {
-        if (typeof value === 'string') event.properties[key] = stripSearchText(value);
-      }
+      event.properties = stripSearchTextDeep(event.properties) as typeof event.properties;
       return event;
     },
   };
-  client = import('posthog-js/dist/module.slim.no-external')
-    .then(({ default: posthog }) => {
-      posthog.init(KEY!, config);
+  client = Promise.all([import('posthog-js/dist/module.slim.no-external'), import('./posthogErrorTracking')])
+    .then(([{ default: posthog }, { ErrorTrackingExtensions }]) => {
+      // Error tracking is bundled here instead of loaded as an external
+      // script (capture_exceptions stays off: it needs one); the window
+      // listeners below feed it instead.
+      posthog.init(KEY!, { ...config, __extensionClasses: { ...ErrorTrackingExtensions } } as Partial<PostHogConfig>);
       return posthog;
     })
     .catch(() => null); // Blocked or failed to load: the site works the same.
+  // No error object: a cross-origin "Script error." or a resource failing to
+  // load, nothing we can act on.
+  window.addEventListener('error', (event) => {
+    if (event.error != null) captureError(event.error, { source: 'window.onerror' });
+  });
+  window.addEventListener('unhandledrejection', (event) => captureError(event.reason, { source: 'unhandledrejection' }));
+}
+
+/**
+ * Sends a JavaScript error to PostHog Error Tracking (stack included), with
+ * the page it happened on. A no-op when analytics is off.
+ */
+export function captureError(error: unknown, props: EventProps = {}): void {
+  if (!client || !shouldSend(error)) return;
+  // Raw values go as they are: PostHog turns strings, objects and events
+  // into exceptions itself.
+  void client.then((posthog) => posthog?.captureException(error, { runtime: 'browser', ...props }));
+}
+
+/** At most this many errors per page load, each distinct one once. */
+export const MAX_ERRORS_PER_PAGE = 10;
+const sentErrors = new Set<string>();
+
+/**
+ * An error repeating in a loop (a render loop, a polling bug) would
+ * otherwise send thousands of events per hour from one tab and use up the
+ * event budget the analytics need.
+ */
+export function shouldSend(error: unknown): boolean {
+  let key: string;
+  try {
+    key = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  } catch {
+    key = 'unprintable error'; // e.g. an object with no prototype
+  }
+  if (sentErrors.has(key) || sentErrors.size >= MAX_ERRORS_PER_PAGE) return false;
+  sentErrors.add(key);
+  return true;
 }
 
 export function track(event: string, props: EventProps = {}): void {

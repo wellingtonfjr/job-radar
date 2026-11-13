@@ -86,4 +86,10 @@ export const config = {
   reportsPerHour: intFromEnv("REPORTS_PER_HOUR", DEFAULT_REPORTS_PER_HOUR),
   /** Public base URL, no trailing slash: used in the sitemap and link previews. */
   siteUrl: (process.env.SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, ""),
+  /**
+   * PostHog project key for server error tracking (see errors.ts). Public by
+   * design (it can only send events). Unset: errors are only logged.
+   */
+  posthogKey: process.env.POSTHOG_KEY || undefined,
+  posthogHost: process.env.POSTHOG_HOST || "https://eu.i.posthog.com",
 };

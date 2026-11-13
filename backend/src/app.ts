@@ -9,6 +9,7 @@ import { DEFAULT_RATE_LIMIT_PER_MINUTE } from "./config.js";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import type { Db } from "./db/index.js";
+import { reportError } from "./errors.js";
 import { DEFAULT_SITE_URL, cachedSitemap, findOpenJob, renderJobPage, robotsTxt } from "./web/seo.js";
 
 /**
@@ -196,8 +197,15 @@ export function createApp(
     };
   }
 
-  const onError: ErrorRequestHandler = (err, _req, res, _next) => {
-    console.error("[api] unhandled error:", err);
+  const onError: ErrorRequestHandler = (err, req, res, _next) => {
+    // Client errors raised by Express or its parsers (a malformed URL, a bad
+    // body) keep their status and aren't server errors to track.
+    const status = typeof err?.status === "number" ? err.status : typeof err?.statusCode === "number" ? err.statusCode : 500;
+    if (status >= 400 && status < 500) {
+      res.status(status).json({ error: status === 400 ? "Bad request" : "Request error" });
+      return;
+    }
+    reportError("api", "unhandled error", err, { method: req.method, route: req.route?.path ?? null });
     res.status(500).json({ error: "Internal server error" });
   };
   app.use(onError);

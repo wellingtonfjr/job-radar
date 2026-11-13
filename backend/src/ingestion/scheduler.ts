@@ -5,6 +5,7 @@ import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
 import type { SourceAdapter } from "../sources/types.js";
+import { reportError } from "../errors.js";
 import { deleteAgedPostings, deleteOffTopicRoles, MAX_LISTING_AGE_DAYS, pruneOldRows, recomputeCanonical, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
 
 export interface Scheduler {
@@ -37,12 +38,33 @@ export function logAged(deleted: number): void {
   if (deleted > 0) console.log(`[ingest] deleted ${deleted} postings published over ${MAX_LISTING_AGE_DAYS} days ago`);
 }
 
-function logSummaries(summaries: SourceRunSummary[]): void {
+/**
+ * Whether the source's previous finished run (before this one) also failed:
+ * a failed source is retried every tick, so only the first failure in a row
+ * is reported.
+ */
+function failedLastRun(db: Db, source: string): boolean {
+  const previous = db
+    .prepare("SELECT status FROM source_runs WHERE source = ? AND finished_at IS NOT NULL ORDER BY id DESC LIMIT 1 OFFSET 1")
+    .get(source) as { status: string } | undefined;
+  return previous?.status === "error";
+}
+
+function logSummaries(db: Db, summaries: SourceRunSummary[]): void {
   for (const s of summaries) {
     if (s.status === "skipped") continue;
     const errors = s.errors.length > 0 ? ` errors=${s.errors.length} (first: ${s.errors[0]?.feed}: ${s.errors[0]?.error})` : "";
     const aged = (s.aged ? ` aged out=${s.aged}` : "") + (s.offTopic ? ` off-topic=${s.offTopic}` : "");
     console.log(`[ingest] ${s.source}: ${s.status} fetched=${s.fetched} new=${s.inserted} closed=${s.closed}${aged}${errors}`);
+    // A source that read nothing at all is an outage worth knowing about;
+    // a few failing boards ("partial") are routine (rate limits, removed boards).
+    if (s.status === "error" && !failedLastRun(db, s.source)) {
+      const first = s.errors[0];
+      reportError("ingest", `${s.source} failed`, new Error(`${s.source}: ${first ? `${first.feed}: ${first.error}` : "no results"}`), {
+        source: s.source,
+        errorCount: s.errors.length,
+      });
+    }
   }
 }
 
@@ -98,7 +120,7 @@ export function startScheduler(
     if (running) return;
     running = runIngestion(db, sources, { staleAfterDays, minIntervalMinutes: ingestIntervalHours * 60, knownSources })
       .then((summaries) => {
-        logSummaries(summaries);
+        logSummaries(db, summaries);
         // Housekeeping only after a cycle that actually fetched something.
         if (summaries.some((s) => s.status !== "skipped")) logPrune(pruneOldRows(db, new Date(), pruneAfterDays), pruneAfterDays);
         return summaries;
@@ -119,21 +141,21 @@ export function startScheduler(
         // Resolve only after a cycle that actually fetched something.
         summaries.some((s) => s.status !== "skipped") ? resolveApplyLinks(db, liveNet, { now: new Date() }).then(logResolve) : undefined,
       )
-      .catch((err: unknown) => console.error("[ingest] cycle failed:", err))
+      .catch((err: unknown) => reportError("ingest", "cycle failed", err))
       // Weekly, after ingestion so the two never compete. Due-ness is read
       // from the database, so restarts and deploys don't trigger extra runs.
       .then(async () => {
         const now = new Date();
         if (accuracyAuditDays > 0 && isAuditDue(db, now, accuracyAuditDays)) logAudit(await runAudit(db, now));
       })
-      .catch((err: unknown) => console.error("[accuracy] audit failed:", err))
+      .catch((err: unknown) => reportError("accuracy", "audit failed", err))
       // Every tick, spending what the hourly budget has accrued since the last check.
       .then(async () => {
         const now = new Date();
         const budget = livenessBudget(db, now, livenessRequestsPerHour);
         if (budget > 0) logLiveness(await runLiveness(db, now, budget), budget);
       })
-      .catch((err: unknown) => console.error("[liveness] check failed:", err))
+      .catch((err: unknown) => reportError("liveness", "check failed", err))
       .finally(() => {
         running = null;
       });
