@@ -10,8 +10,8 @@ import { countActiveFilters, type Filters } from './filters';
  * - Cookieless: nothing is stored in the browser; PostHog counts unique
  *   visitors with a daily server-side hash (the project must have
  *   cookieless mode enabled in its settings, or events are dropped).
- * - Only the events below. No autocapture, session replay, surveys, heatmaps
- *   or external scripts.
+ * - Only the events below, plus JavaScript errors (see captureError). No
+ *   autocapture, session replay, surveys, heatmaps or external scripts.
  * - The search text never leaves the browser: `q` is stripped from every URL
  *   and events only carry its length.
  * - Do Not Track is respected.
@@ -74,12 +74,27 @@ export function initAnalytics(): void {
       return event;
     },
   };
-  client = import('posthog-js/dist/module.slim.no-external')
-    .then(({ default: posthog }) => {
-      posthog.init(KEY!, config);
+  client = Promise.all([import('posthog-js/dist/module.slim.no-external'), import('./posthogErrorTracking')])
+    .then(([{ default: posthog }, { ErrorTrackingExtensions }]) => {
+      // Error tracking is bundled here instead of loaded as an external
+      // script (capture_exceptions stays off: it needs one); the window
+      // listeners below feed it instead.
+      posthog.init(KEY!, { ...config, __extensionClasses: { ...ErrorTrackingExtensions } } as Partial<PostHogConfig>);
       return posthog;
     })
     .catch(() => null); // Blocked or failed to load: the site works the same.
+  window.addEventListener('error', (event) => captureError(event.error ?? event.message, { source: 'window.onerror' }));
+  window.addEventListener('unhandledrejection', (event) => captureError(event.reason, { source: 'unhandledrejection' }));
+}
+
+/**
+ * Sends a JavaScript error to PostHog Error Tracking (stack included), with
+ * the page it happened on. A no-op when analytics is off.
+ */
+export function captureError(error: unknown, props: EventProps = {}): void {
+  if (!client) return;
+  const err = error instanceof Error ? error : new Error(typeof error === 'string' ? error : 'Unknown error');
+  void client.then((posthog) => posthog?.captureException(err, { runtime: 'browser', ...props }));
 }
 
 export function track(event: string, props: EventProps = {}): void {

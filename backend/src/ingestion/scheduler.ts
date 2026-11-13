@@ -5,6 +5,7 @@ import type { Db } from "../db/index.js";
 import { liveNet } from "../resolve/net.js";
 import { resolveApplyLinks, type ResolveSummary } from "../resolve/resolver.js";
 import type { SourceAdapter } from "../sources/types.js";
+import { reportError } from "../errors.js";
 import { deleteAgedPostings, deleteOffTopicRoles, MAX_LISTING_AGE_DAYS, pruneOldRows, recomputeCanonical, runIngestion, type PruneSummary, type SourceRunSummary, type StaleWindows } from "./pipeline.js";
 
 export interface Scheduler {
@@ -43,6 +44,15 @@ function logSummaries(summaries: SourceRunSummary[]): void {
     const errors = s.errors.length > 0 ? ` errors=${s.errors.length} (first: ${s.errors[0]?.feed}: ${s.errors[0]?.error})` : "";
     const aged = (s.aged ? ` aged out=${s.aged}` : "") + (s.offTopic ? ` off-topic=${s.offTopic}` : "");
     console.log(`[ingest] ${s.source}: ${s.status} fetched=${s.fetched} new=${s.inserted} closed=${s.closed}${aged}${errors}`);
+    // A source that read nothing at all is an outage worth knowing about;
+    // a few failing boards ("partial") are routine (rate limits, removed boards).
+    if (s.status === "error") {
+      const first = s.errors[0];
+      reportError("ingest", `${s.source} failed`, new Error(`${s.source}: ${first ? `${first.feed}: ${first.error}` : "no results"}`), {
+        source: s.source,
+        errorCount: s.errors.length,
+      });
+    }
   }
 }
 
@@ -119,21 +129,21 @@ export function startScheduler(
         // Resolve only after a cycle that actually fetched something.
         summaries.some((s) => s.status !== "skipped") ? resolveApplyLinks(db, liveNet, { now: new Date() }).then(logResolve) : undefined,
       )
-      .catch((err: unknown) => console.error("[ingest] cycle failed:", err))
+      .catch((err: unknown) => reportError("ingest", "cycle failed", err))
       // Weekly, after ingestion so the two never compete. Due-ness is read
       // from the database, so restarts and deploys don't trigger extra runs.
       .then(async () => {
         const now = new Date();
         if (accuracyAuditDays > 0 && isAuditDue(db, now, accuracyAuditDays)) logAudit(await runAudit(db, now));
       })
-      .catch((err: unknown) => console.error("[accuracy] audit failed:", err))
+      .catch((err: unknown) => reportError("accuracy", "audit failed", err))
       // Every tick, spending what the hourly budget has accrued since the last check.
       .then(async () => {
         const now = new Date();
         const budget = livenessBudget(db, now, livenessRequestsPerHour);
         if (budget > 0) logLiveness(await runLiveness(db, now, budget), budget);
       })
-      .catch((err: unknown) => console.error("[liveness] check failed:", err))
+      .catch((err: unknown) => reportError("liveness", "check failed", err))
       .finally(() => {
         running = null;
       });

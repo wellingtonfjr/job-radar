@@ -276,6 +276,14 @@ key is public by design, it can only send events), and never on in dev or tests.
 - **Never the search text:** `q` is stripped from every URL before sending.
 - Do Not Track is respected. The CSP allows only PostHog's ingestion hosts.
 
+### Error tracking
+
+Unexpected errors go to PostHog Error Tracking (same EU project as the analytics), with their stack:
+
+- **Browser:** uncaught errors, unhandled promise rejections and React render crashes ([`analytics.ts`](frontend/src/lib/analytics.ts) `captureError`, wired in [`main.tsx`](frontend/src/main.tsx)). The error extension is bundled, since external scripts are disabled, and loads lazily after the page.
+- **Server:** API 500s (method and route only, never request data), ingestion cycle, audit, liveness and startup failures, uncaught exceptions and unhandled rejections, and a source that read nothing at all ([`errors.ts`](backend/src/errors.ts) `reportError`). A few failing boards in a run (rate limits, removed boards) are routine and not reported.
+- **Configuration:** off unless `POSTHOG_KEY` is set (`[env]` in `fly.toml`); errors are always logged too.
+
 ### Accuracy audit
 
 Every `ACCURACY_AUDIT_DAYS` (default 7; `0` disables) the scheduler re-checks,

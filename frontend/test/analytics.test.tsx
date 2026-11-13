@@ -24,6 +24,11 @@ describe('analytics helpers', () => {
     expect(analytics.analyticsEnabled()).toBe(false);
   });
 
+  it('ignores errors when analytics is off', () => {
+    expect(() => analytics.captureError(new Error('boom'))).not.toThrow();
+    expect(() => analytics.captureError('a string', { source: 'test' })).not.toThrow();
+  });
+
   it('strips the search text from our own URLs only', () => {
     const origin = 'https://radar-de-vagas.fly.dev';
     expect(analytics.stripSearchText(`${origin}/?q=jane%20doe&category=dev`, origin)).toBe(`${origin}/?category=dev`);

@@ -7,9 +7,19 @@ import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { compactOnce, moveDescriptions } from "./db/descriptions.js";
 import { openDb } from "./db/index.js";
+import { createPostHogReporter, flushErrors, reportError, setErrorReporter } from "./errors.js";
 import { deleteOffTopicRoles, recomputeCanonical, staleWindowsFor } from "./ingestion/pipeline.js";
 import { logOffTopic, startScheduler } from "./ingestion/scheduler.js";
 import { SOURCES } from "./sources/index.js";
+
+// First, so errors from startup on are tracked.
+if (config.posthogKey) setErrorReporter(createPostHogReporter({ key: config.posthogKey, host: config.posthogHost }));
+process.on("unhandledRejection", (reason) => reportError("process", "unhandled promise rejection", reason));
+process.on("uncaughtException", (err) => {
+  reportError("process", "uncaught exception", err);
+  // The process state is unknown now: send the report, then let Fly restart it.
+  void flushErrors().finally(() => process.exit(1));
+});
 
 const db = openDb(config.dbPath);
 const app = createApp(db, {
@@ -55,7 +65,7 @@ if (!scheduler) console.log("[ingest] scheduler disabled (SCHEDULER=off); run `n
 // a second connection's long reads would let the WAL grow during the move.
 // Before compacting, drop roles outside the tech categories (the site is tech-only).
 moveDescriptions(db)
-  .catch((err: unknown) => console.error("[db] moving descriptions failed:", err))
+  .catch((err: unknown) => reportError("db", "moving descriptions failed", err))
   .then(async () => {
     const offTopic = await deleteOffTopicRoles(db);
     logOffTopic(offTopic);
@@ -63,15 +73,15 @@ moveDescriptions(db)
     // the next ingestion can be hours away).
     recomputeCanonical(db, new Date());
   })
-  .catch((err: unknown) => console.error("[db] deleting off-topic roles failed:", err))
+  .catch((err: unknown) => reportError("db", "deleting off-topic roles failed", err))
   .then(() => compactOnce(db, config.dbPath))
-  .catch((err: unknown) => console.error("[db] compacting failed:", err));
+  .catch((err: unknown) => reportError("db", "compacting failed", err));
 
 function shutdown(): void {
   scheduler?.stop();
   server.close(() => {
     db.close();
-    process.exit(0);
+    void flushErrors().finally(() => process.exit(0));
   });
 }
 process.on("SIGINT", shutdown);
