@@ -3,9 +3,12 @@
 ## Map
 
 - `src/sources/`: one adapter per source, **fetch and map only** (to `RawJob`).
-  Register it in `src/sources/index.ts`, ATS sources before job boards (order
-  decides which copy wins de-duplication). Curated boards are in
-  `companies.ts`.
+  Register it in `src/sources/index.ts` and set `feeds` to its curated board
+  tokens (the pipeline closes the roles of a board removed from the list
+  through it). Which copy wins de-duplication is decided by `kind`, not by
+  the order in `index.ts`: `ats` beats `aggregator` (`SOURCE_RANK` in
+  `ingestion/pipeline.ts`), then the source id alphabetically. Curated
+  boards are in `companies.ts`.
 - `src/normalize/`: category (tech only, `classify.ts`), seniority, salary,
   location to ISO countries, skills, dedup keys. Pure functions.
 - `src/ingestion/`: pipeline (upsert, close, retire, dedup, pay bands),

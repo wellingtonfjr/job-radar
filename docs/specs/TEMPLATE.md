@@ -24,8 +24,9 @@ out, new settings, how it fits the existing patterns. Link the code.
 
 ## Acceptance criteria
 
-- **AC1.** Given …, when …, then ….
-- **AC2.** …
+- **NNNN-AC1.** Given …, when …, then ….
+- **NNNN-AC2.** … Tag criteria that can only be checked on production
+  with **[post-deploy]**.
 
 ## Constraints
 
@@ -48,4 +49,4 @@ implementing PR.
 
 | AC | Proved by |
 | --- | --- |
-| AC1 | |
+| NNNN-AC1 | |
