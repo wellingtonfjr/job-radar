@@ -7,3 +7,7 @@ data/
 *.db-shm
 .env
 .DS_Store
+
+# Claude Code: share settings and agents, keep personal and session files local
+.claude/worktrees/
+.claude/settings.local.json
