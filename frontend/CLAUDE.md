@@ -5,8 +5,11 @@
 - `src/api/`: API client and types (keep in sync with the backend responses).
 - `src/components/`, `src/pages/`, `src/hooks/`: UI. Plain React and CSS
   (`index.css`), no UI library.
-- `src/lib/router.ts`: our own tiny router. The selected role is in the URL
-  (`?job=…`). Don't add a router library.
+- `src/lib/router.ts`: our own tiny History-API router with three routes:
+  the list `/`, the role page `/jobs/:id` (build it with `jobPath()`) and
+  `/saved`. Separately, the role selected for the list + preview split is the
+  `?job=…` query param (`src/lib/filters.ts`). A link to a role needs the
+  right one of the two. Don't add a router library.
 - `src/i18n/`: every user-visible string lives in `en.ts` and `pt-BR.ts`. Add
   both when you add text.
 - `src/lib/analytics.ts`: PostHog. Only the events listed in the README, no

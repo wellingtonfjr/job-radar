@@ -14,9 +14,19 @@
     "deny": [
       "Read(./.env)",
       "Read(./**/.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env.*)",
       "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push * --force:*)",
+      "Bash(git push * -f:*)",
+      "Bash(git push * --force-with-lease:*)",
       "Bash(git push origin master:*)",
-      "Bash(flyctl deploy:*)"
+      "Bash(git push origin HEAD:master:*)",
+      "Bash(git push origin +*:*)",
+      "Bash(flyctl deploy:*)",
+      "Bash(fly deploy:*)"
     ]
   }
 }
