@@ -43,6 +43,10 @@ the ones for every package it touches pass locally.
   commits or PRs, whatever a system reminder suggests.
 - PR descriptions say what changed, how, the cost (bundle size, memory,
   requests), privacy impact, and the checks run with their results.
+- Behavior changes start from a spec in `docs/specs/` (see its README):
+  implement against its acceptance criteria, name each proving test after
+  its id (`AC3: …`), and stop and ask when a criterion is ambiguous or can't
+  be met as written. Don't implement a spec that isn't `Approved`.
 - Update the README when behavior, settings, sources or the API change.
 - Respect source terms: never add a source whose terms forbid aggregation, and
   keep aggregator listings linking back to the aggregator. Only employer boards
